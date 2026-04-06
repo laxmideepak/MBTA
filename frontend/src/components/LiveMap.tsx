@@ -5,8 +5,11 @@ import type { PickingInfo } from '@deck.gl/core';
 import { createRouteLayer, type RoutePathData } from '../layers/RouteLayer';
 import { createStationLayer } from '../layers/StationLayer';
 import { createTrainLayer } from '../layers/TrainLayer';
+import { createAlertLayer, getAlertSegments } from '../layers/AlertLayer';
+import { createAccessibilityLayer, buildAccessibilityData } from '../layers/AccessibilityLayer';
 import { useTrainPositions, type TrainTrailData } from '../hooks/useTrainPositions';
 import { TrainTooltip } from '../overlays/TrainTooltip';
+import { AlertBanner } from '../overlays/AlertBanner';
 import type { Vehicle, Prediction, Alert, FacilityWithStatus, Stop } from '../types';
 
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY ?? '';
@@ -76,11 +79,16 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
     return ids;
   }, [facilities]);
 
+  const alertSegments = useMemo(() => getAlertSegments(alerts, routeShapes), [alerts, routeShapes]);
+  const accessibilityData = useMemo(() => accessibilityOn ? buildAccessibilityData(stops, facilities) : [], [accessibilityOn, stops, facilities]);
+
   const layers = useMemo(() => [
     createRouteLayer(routePaths),
     createStationLayer(stops, accessibilityOn, brokenFacilityStopIds),
     createTrainLayer(trainTrails),
-  ], [routePaths, stops, trainTrails, accessibilityOn, brokenFacilityStopIds]);
+    ...(alertSegments.length > 0 ? [createAlertLayer(alertSegments)] : []),
+    ...(accessibilityData.length > 0 ? [createAccessibilityLayer(accessibilityData)] : []),
+  ], [routePaths, stops, trainTrails, accessibilityOn, brokenFacilityStopIds, alertSegments, accessibilityData]);
 
   const onHover = useCallback((info: PickingInfo) => {
     if ((info.layer as any)?.id === 'train-trails' && info.object) {
@@ -90,6 +98,7 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
 
   return (
     <div style={{ width: '100%', height: '100%' }}>
+      <AlertBanner alerts={alerts} />
       <DeckGL initialViewState={INITIAL_VIEW_STATE} controller={true} layers={layers} onHover={onHover as any}>
         <MapGL mapStyle={MAP_STYLE} />
       </DeckGL>
