@@ -1,0 +1,76 @@
+import type { Vehicle, Prediction, Alert, Facility, FacilityStatus, Weather, SystemState } from './types.js';
+
+export class StateManager {
+  private state: SystemState = {
+    vehicles: new Map(),
+    predictions: new Map(),
+    alerts: [],
+    facilities: new Map(),
+    facilityStatuses: new Map(),
+    weather: null,
+  };
+
+  getState(): SystemState { return this.state; }
+
+  resetVehicles(vehicles: Vehicle[]): void {
+    this.state.vehicles.clear();
+    for (const v of vehicles) this.state.vehicles.set(v.id, v);
+  }
+  upsertVehicle(vehicle: Vehicle): void { this.state.vehicles.set(vehicle.id, vehicle); }
+  removeVehicle(id: string): void { this.state.vehicles.delete(id); }
+
+  resetPredictions(predictions: Prediction[]): void {
+    this.state.predictions.clear();
+    for (const p of predictions) {
+      const list = this.state.predictions.get(p.stopId) ?? [];
+      list.push(p);
+      this.state.predictions.set(p.stopId, list);
+    }
+  }
+  upsertPrediction(prediction: Prediction): void {
+    const list = this.state.predictions.get(prediction.stopId) ?? [];
+    const idx = list.findIndex((p) => p.id === prediction.id);
+    if (idx >= 0) list[idx] = prediction;
+    else list.push(prediction);
+    this.state.predictions.set(prediction.stopId, list);
+  }
+  removePrediction(predictionId: string, stopId: string): void {
+    const list = this.state.predictions.get(stopId);
+    if (!list) return;
+    this.state.predictions.set(stopId, list.filter((p) => p.id !== predictionId));
+  }
+
+  resetAlerts(alerts: Alert[]): void { this.state.alerts = alerts; }
+  upsertAlert(alert: Alert): void {
+    const idx = this.state.alerts.findIndex((a) => a.id === alert.id);
+    if (idx >= 0) this.state.alerts[idx] = alert;
+    else this.state.alerts.push(alert);
+  }
+  removeAlert(id: string): void { this.state.alerts = this.state.alerts.filter((a) => a.id !== id); }
+
+  setFacilities(facilities: Facility[]): void {
+    this.state.facilities.clear();
+    for (const f of facilities) this.state.facilities.set(f.id, f);
+  }
+  setFacilityStatuses(statuses: FacilityStatus[]): void {
+    this.state.facilityStatuses.clear();
+    for (const s of statuses) this.state.facilityStatuses.set(s.facilityId, s);
+  }
+  setWeather(weather: Weather | null): void { this.state.weather = weather; }
+
+  getSnapshot() {
+    const predictions: Record<string, Prediction[]> = {};
+    for (const [stopId, preds] of this.state.predictions) predictions[stopId] = preds;
+    const facilities: { facility: Facility; status: FacilityStatus | undefined }[] = [];
+    for (const [id, facility] of this.state.facilities) {
+      facilities.push({ facility, status: this.state.facilityStatuses.get(id) });
+    }
+    return {
+      vehicles: Array.from(this.state.vehicles.values()),
+      predictions,
+      alerts: this.state.alerts,
+      facilities,
+      weather: this.state.weather,
+    };
+  }
+}
