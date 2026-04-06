@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavBar } from './NavBar';
 import { LiveMap } from './LiveMap';
+import { DepartureBoard } from './DepartureBoard';
 import { useSystemState } from '../hooks/useSystemState';
 import type { ViewMode } from '../types';
 import '../styles/global.css';
@@ -23,9 +24,7 @@ export function App() {
           facilities={facilities} accessibilityOn={accessibilityOn} />
       )}
       {view === 'boards' && (
-        <div style={{ paddingTop: 60, textAlign: 'center', color: '#888' }}>
-          Departure boards — coming soon
-        </div>
+        <DepartureBoard predictions={predictions} alerts={alerts} facilities={facilities} />
       )}
     </>
   );
