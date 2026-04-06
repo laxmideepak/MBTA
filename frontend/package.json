@@ -1,0 +1,33 @@
+{
+  "name": "frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@deck.gl/core": "^9.0.20",
+    "@deck.gl/layers": "^9.0.20",
+    "@deck.gl/geo-layers": "^9.0.20",
+    "@deck.gl/react": "^9.0.20",
+    "maplibre-gl": "^4.5.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-map-gl": "^7.1.7"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^15.0.7",
+    "@testing-library/jest-dom": "^6.4.5",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "jsdom": "^24.1.0",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.12",
+    "vitest": "^1.6.0"
+  }
+}
