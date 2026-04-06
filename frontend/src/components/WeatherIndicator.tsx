@@ -6,16 +6,16 @@ interface WeatherIndicatorProps { weather: Weather | null; }
 const STORM_KEYWORDS = ['storm', 'thunder', 'rain', 'snow', 'sleet', 'ice', 'blizzard', 'hurricane', 'tornado'];
 
 function isStormCondition(condition: string): boolean {
-  const lower = condition.toLowerCase();
-  return STORM_KEYWORDS.some((kw) => lower.includes(kw));
+  return STORM_KEYWORDS.some((kw) => condition.toLowerCase().includes(kw));
 }
 
 function getWeatherEmoji(condition: string): string {
   const lower = condition.toLowerCase();
-  if (lower.includes('thunder')) return String.fromCodePoint(0x26C8);
-  if (lower.includes('snow') || lower.includes('blizzard')) return String.fromCodePoint(0x1F328);
-  if (lower.includes('rain') || lower.includes('sleet')) return String.fromCodePoint(0x1F327);
-  return String.fromCodePoint(0x26A0);
+  if (lower.includes('thunder')) return '\u26C8';
+  if (lower.includes('snow') || lower.includes('blizzard')) return '\uD83C\uDF28';
+  if (lower.includes('rain') || lower.includes('sleet')) return '\uD83C\uDF27';
+  if (lower.includes('ice')) return '\uD83E\uDDCA';
+  return '\u26A0';
 }
 
 export const WeatherIndicator: FC<WeatherIndicatorProps> = ({ weather }) => {
