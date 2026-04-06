@@ -1,0 +1,28 @@
+:root {
+  --bg-primary: #0a0a0a;
+  --bg-surface: #141414;
+  --bg-tooltip: rgba(20, 20, 20, 0.92);
+  --text-primary: #e0e0e0;
+  --text-secondary: #888888;
+  --text-muted: #555555;
+  --red-line: #DA291C;
+  --orange-line: #ED8B00;
+  --blue-line: #003DA5;
+  --green-line: #00843D;
+  --status-ok: #4CAF50;
+  --status-alert: #FF9800;
+  --status-down: #F44336;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+}
+
+#root { width: 100%; height: 100%; }
