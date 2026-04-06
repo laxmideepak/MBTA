@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavBar } from './NavBar';
 import { LiveMap } from './LiveMap';
 import { DepartureBoard } from './DepartureBoard';
+import { WeatherIndicator } from './WeatherIndicator';
 import { useSystemState } from '../hooks/useSystemState';
 import type { ViewMode } from '../types';
 import '../styles/global.css';
@@ -34,6 +35,7 @@ export function App() {
         onAccessibilityToggle={() => setAccessibilityOn((prev) => !prev)}
         connected={connected}
       />
+      <WeatherIndicator weather={weather} />
       {view === 'map' && (
         <LiveMap vehicles={vehicles} predictions={predictions} alerts={alerts}
           facilities={facilities} accessibilityOn={accessibilityOn} />
