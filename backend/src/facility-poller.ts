@@ -48,7 +48,7 @@ export class FacilityPoller {
     try {
       const [facilitiesRes, statusesRes] = await Promise.all([
         fetch(`https://api-v3.mbta.com/facilities?filter[type]=ELEVATOR,ESCALATOR&api_key=${this.apiKey}`),
-        fetch(`https://api-v3.mbta.com/facilities?filter[type]=ELEVATOR,ESCALATOR&api_key=${this.apiKey}`),
+        fetch(`https://api-v3.mbta.com/live_facilities?api_key=${this.apiKey}`),
       ]);
       const facilitiesJson = await facilitiesRes.json();
       const statusesJson = await statusesRes.json();
