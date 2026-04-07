@@ -16,7 +16,7 @@ export interface TrainTrailData {
   progress: number;
 }
 
-const TRAIL_POINTS = 20;
+const TRAIL_POINTS = 80;
 
 export function useTrainPositions(
   vehicles: Vehicle[],

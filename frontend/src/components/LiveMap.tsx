@@ -85,13 +85,14 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
   const layers = useMemo(() => [
     createRouteLayer(routePaths),
     createStationLayer(stops, accessibilityOn, brokenFacilityStopIds),
-    createTrainLayer(trainTrails),
+    ...createTrainLayer(trainTrails),
     ...(alertSegments.length > 0 ? [createAlertLayer(alertSegments)] : []),
     ...(accessibilityData.length > 0 ? [createAccessibilityLayer(accessibilityData)] : []),
   ], [routePaths, stops, trainTrails, accessibilityOn, brokenFacilityStopIds, alertSegments, accessibilityData]);
 
   const onHover = useCallback((info: PickingInfo) => {
-    if ((info.layer as any)?.id === 'train-trails' && info.object) {
+    const layerId = (info.layer as any)?.id;
+    if ((layerId === 'train-trails' || layerId === 'train-dots') && info.object) {
       setHoverInfo({ x: info.x, y: info.y, train: info.object as TrainTrailData });
     } else { setHoverInfo(null); }
   }, []);
