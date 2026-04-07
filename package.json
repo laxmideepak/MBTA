@@ -8,6 +8,7 @@
     "dev": "npm run dev:backend & npm run dev:frontend",
     "test": "npm test --workspaces",
     "test:backend": "npm test --workspace=backend",
-    "test:frontend": "npm test --workspace=frontend"
+    "test:frontend": "npm test --workspace=frontend",
+    "test:e2e": "npm run test:e2e --workspace=frontend"
   }
 }
