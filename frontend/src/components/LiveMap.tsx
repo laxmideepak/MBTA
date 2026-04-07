@@ -4,10 +4,10 @@ import { DeckGL } from '@deck.gl/react';
 import type { PickingInfo } from '@deck.gl/core';
 import { createRouteLayer, type RoutePathData } from '../layers/RouteLayer';
 import { createStationLayer } from '../layers/StationLayer';
-import { createTrainLayer } from '../layers/TrainLayer';
+import { createTrainLayer, type TripData } from '../layers/TrainLayer';
 import { createAlertLayer, getAlertSegments } from '../layers/AlertLayer';
 import { createAccessibilityLayer, buildAccessibilityData } from '../layers/AccessibilityLayer';
-import { useTrainPositions, type TrainTrailData } from '../hooks/useTrainPositions';
+import { useTrainTrips, useAnimatedTime } from '../hooks/useTrainPositions';
 import { TrainTooltip } from '../overlays/TrainTooltip';
 import { AlertBanner } from '../overlays/AlertBanner';
 import type { Vehicle, Prediction, Alert, FacilityWithStatus, Stop } from '../types';
@@ -19,7 +19,7 @@ const INITIAL_VIEW_STATE = {
   longitude: -71.0565,
   latitude: 42.3555,
   zoom: 13,
-  pitch: 45,
+  pitch: 50,
   bearing: 0,
 };
 
@@ -34,8 +34,9 @@ interface LiveMapProps {
 export function LiveMap({ vehicles, predictions, alerts, facilities, accessibilityOn }: LiveMapProps) {
   const [routeShapes, setRouteShapes] = useState<globalThis.Map<string, RoutePathData[]>>(new globalThis.Map());
   const [stops, setStops] = useState<Stop[]>([]);
-  const [hoverInfo, setHoverInfo] = useState<{ x: number; y: number; train: TrainTrailData } | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{ x: number; y: number; trip: TripData } | null>(null);
 
+  // Load shapes and stops on mount
   useEffect(() => {
     async function loadData() {
       try {
@@ -65,35 +66,40 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
     loadData();
   }, []);
 
+  // Flatten route paths
   const routePaths = useMemo(() => {
     const paths: RoutePathData[] = [];
     routeShapes.forEach((shapes) => { for (const shape of shapes) paths.push(shape); });
     return paths;
   }, [routeShapes]);
 
-  const trainTrails = useTrainPositions(vehicles, routeShapes);
+  // Build trip data for TripsLayer
+  const trips = useTrainTrips(vehicles, routeShapes);
+  const currentTime = useAnimatedTime(trips);
 
+  // Broken facilities
   const brokenFacilityStopIds = useMemo(() => {
     const ids = new Set<string>();
     for (const f of facilities) { if (f.status?.status === 'OUT_OF_ORDER') ids.add(f.facility.stopId); }
     return ids;
   }, [facilities]);
 
+  // Alert + accessibility data
   const alertSegments = useMemo(() => getAlertSegments(alerts, routeShapes), [alerts, routeShapes]);
   const accessibilityData = useMemo(() => accessibilityOn ? buildAccessibilityData(stops, facilities) : [], [accessibilityOn, stops, facilities]);
 
+  // Build all layers
   const layers = useMemo(() => [
     createRouteLayer(routePaths),
     createStationLayer(stops, accessibilityOn, brokenFacilityStopIds),
-    ...createTrainLayer(trainTrails),
+    createTrainLayer(trips, currentTime),
     ...(alertSegments.length > 0 ? [createAlertLayer(alertSegments)] : []),
     ...(accessibilityData.length > 0 ? [createAccessibilityLayer(accessibilityData)] : []),
-  ], [routePaths, stops, trainTrails, accessibilityOn, brokenFacilityStopIds, alertSegments, accessibilityData]);
+  ], [routePaths, stops, trips, currentTime, accessibilityOn, brokenFacilityStopIds, alertSegments, accessibilityData]);
 
   const onHover = useCallback((info: PickingInfo) => {
-    const layerId = (info.layer as any)?.id;
-    if ((layerId === 'train-trails' || layerId === 'train-dots') && info.object) {
-      setHoverInfo({ x: info.x, y: info.y, train: info.object as TrainTrailData });
+    if ((info.layer as any)?.id === 'train-trails' && info.object) {
+      setHoverInfo({ x: info.x, y: info.y, trip: info.object as TripData });
     } else { setHoverInfo(null); }
   }, []);
 
@@ -106,10 +112,10 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
       {hoverInfo && (
         <TrainTooltip
           x={hoverInfo.x} y={hoverInfo.y}
-          routeId={hoverInfo.train.routeId} directionId={hoverInfo.train.directionId}
-          stopId={hoverInfo.train.stopId}
-          predictions={predictions[hoverInfo.train.stopId] ?? []}
-          progress={hoverInfo.train.progress}
+          routeId={hoverInfo.trip.routeId} directionId={hoverInfo.trip.directionId}
+          stopId={hoverInfo.trip.stopId}
+          predictions={predictions[hoverInfo.trip.stopId] ?? []}
+          progress={hoverInfo.trip.progress}
         />
       )}
     </div>
