@@ -159,6 +159,22 @@ async function start() {
     console.log(`Backend running on http://localhost:${PORT}`);
     console.log(`WebSocket available at ws://localhost:${PORT}/ws`);
   });
+
+  const shutdown = () => {
+    console.log('Shutting down gracefully...');
+    mbtaStream.stop();
+    facilityPoller.stop();
+    weatherPoller.stop();
+    server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+    // Force exit after 5 seconds if graceful shutdown fails
+    setTimeout(() => process.exit(1), 5000);
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 start().catch((err) => {
