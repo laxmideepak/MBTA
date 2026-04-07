@@ -45,7 +45,7 @@ function ConnectionBanner({ connected, lastMessageTime }: { connected: boolean; 
 export function App() {
   const [view, setView] = useState<ViewMode>('map');
   const [accessibilityOn, setAccessibilityOn] = useState(false);
-  const { vehicles, predictions, alerts, facilities, weather, connected } = useSystemState();
+  const { vehicles, predictions, alerts, facilities, weather, connected, lastMessageTime } = useSystemState();
 
   return (
     <>
@@ -67,6 +67,7 @@ export function App() {
         onAccessibilityToggle={() => setAccessibilityOn((prev) => !prev)}
         connected={connected}
       />
+      <ConnectionBanner connected={connected} lastMessageTime={lastMessageTime} />
       <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
         {connected ? `Tracking ${vehicles.length} trains live` : 'Connecting to live data...'}
       </div>

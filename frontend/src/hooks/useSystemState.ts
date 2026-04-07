@@ -78,5 +78,5 @@ export function useSystemState() {
   }, []);
 
   const { connected } = useWebSocket({ url: WS_URL, onMessage: handleMessage });
-  return { vehicles, predictions, alerts, facilities, weather, connected };
+  return { vehicles, predictions, alerts, facilities, weather, connected, lastMessageTime };
 }
