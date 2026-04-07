@@ -2,6 +2,7 @@ import { type FC } from 'react';
 import { getRouteColorHex, getRouteDisplayName } from '../utils/mbta-colors';
 import { DIRECTION_NAMES } from '../utils/mbta-routes';
 import { formatMinutesUntil } from '../utils/time-format';
+import { getStopName } from '../utils/stop-names';
 import type { Prediction } from '../types';
 import '../styles/tooltip.css';
 
@@ -41,7 +42,7 @@ export const TrainTooltip: FC<TrainTooltipProps> = ({ x, y, routeId, directionId
           <div className="tooltip-stops-label">Next stops</div>
           {upcoming.map((pred) => (
             <div key={pred.id} className="tooltip-stop-row">
-              <span className="tooltip-stop-name">{pred.stopId.replace('place-', '')}</span>
+              <span className="tooltip-stop-name">{getStopName(pred.stopId)}</span>
               <span className="tooltip-stop-time">{formatMinutesUntil(pred.arrivalTime!)}</span>
             </div>
           ))}
