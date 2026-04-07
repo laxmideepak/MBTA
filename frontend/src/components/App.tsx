@@ -51,6 +51,11 @@ export function App() {
   const { vehicles, predictions, alerts, facilities, weather, connected, lastMessageTime } = useSystemState();
   const { stops } = useRouteData();
   const pendingStationRef = useRef<Stop | null>(null);
+  const [everConnected, setEverConnected] = useState(false);
+
+  useEffect(() => {
+    if (connected) setEverConnected(true);
+  }, [connected]);
 
   return (
     <>
@@ -60,7 +65,7 @@ export function App() {
       >
         Skip to main content
       </a>
-      {!connected && (
+      {!everConnected && (
         <div className="loading-overlay">
           <div className="loading-spinner" />
           <span className="loading-text">Connecting to live data...</span>
@@ -93,7 +98,7 @@ export function App() {
       <main id="main-content">
         {view === 'map' && (
           <ErrorBoundary fallbackMessage="Map failed to load">
-            <Suspense fallback={<div className="loading-overlay"><div className="loading-spinner" /><span className="loading-text">Loading map...</span></div>}>
+            <Suspense fallback={<div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="loading-spinner" /></div>}>
               <LiveMap vehicles={vehicles} predictions={predictions} alerts={alerts}
                 facilities={facilities} accessibilityOn={accessibilityOn} />
             </Suspense>
@@ -101,7 +106,7 @@ export function App() {
         )}
         {view === 'boards' && (
           <ErrorBoundary fallbackMessage="Departure board failed to load">
-            <Suspense fallback={<div className="loading-overlay"><div className="loading-spinner" /><span className="loading-text">Loading map...</span></div>}>
+            <Suspense fallback={<div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="loading-spinner" /></div>}>
               <DepartureBoard predictions={predictions} alerts={alerts} facilities={facilities} />
             </Suspense>
           </ErrorBoundary>
