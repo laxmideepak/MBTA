@@ -9,9 +9,11 @@ interface NavBarProps {
   accessibilityOn: boolean;
   onAccessibilityToggle: () => void;
   connected: boolean;
+  onStationListToggle?: () => void;
+  stationListVisible?: boolean;
 }
 
-export const NavBar: FC<NavBarProps> = ({ view, onViewChange, accessibilityOn, onAccessibilityToggle, connected }) => (
+export const NavBar: FC<NavBarProps> = ({ view, onViewChange, accessibilityOn, onAccessibilityToggle, connected, onStationListToggle, stationListVisible }) => (
   <nav className="nav-bar">
     <div className="nav-left">
       <span className="nav-title">BOSTON SUBWAY</span>
@@ -22,6 +24,17 @@ export const NavBar: FC<NavBarProps> = ({ view, onViewChange, accessibilityOn, o
       <button className={`nav-tab ${view === 'boards' ? 'active' : ''}`} onClick={() => onViewChange('boards')}>Boards</button>
     </div>
     <div className="nav-right">
+      {onStationListToggle && (
+        <button
+          className={`accessibility-toggle ${stationListVisible ? 'active' : ''}`}
+          onClick={onStationListToggle}
+          aria-label="Toggle station list"
+          aria-pressed={stationListVisible ?? false}
+        >
+          <span aria-hidden="true">☰</span>
+          <span className="sr-only">Stations</span>
+        </button>
+      )}
       <button
         className={`accessibility-toggle ${accessibilityOn ? 'active' : ''}`}
         onClick={onAccessibilityToggle}

@@ -1,9 +1,11 @@
-import { Suspense, lazy, useState, useEffect } from 'react';
+import { Suspense, lazy, useState, useEffect, useRef } from 'react';
 import { NavBar } from './NavBar';
 import { WeatherIndicator } from './WeatherIndicator';
 import { ErrorBoundary } from './ErrorBoundary';
+import { StationList } from './StationList';
 import { useSystemState } from '../hooks/useSystemState';
-import type { ViewMode } from '../types';
+import { useRouteData } from '../hooks/useRouteData';
+import type { ViewMode, Stop } from '../types';
 import '../styles/global.css';
 import '../styles/app.css';
 
@@ -45,7 +47,10 @@ function ConnectionBanner({ connected, lastMessageTime }: { connected: boolean; 
 export function App() {
   const [view, setView] = useState<ViewMode>('map');
   const [accessibilityOn, setAccessibilityOn] = useState(false);
+  const [stationListVisible, setStationListVisible] = useState(false);
   const { vehicles, predictions, alerts, facilities, weather, connected, lastMessageTime } = useSystemState();
+  const { stops } = useRouteData();
+  const pendingStationRef = useRef<Stop | null>(null);
 
   return (
     <>
@@ -66,6 +71,19 @@ export function App() {
         accessibilityOn={accessibilityOn}
         onAccessibilityToggle={() => setAccessibilityOn((prev) => !prev)}
         connected={connected}
+        stationListVisible={stationListVisible}
+        onStationListToggle={() => setStationListVisible((prev) => !prev)}
+      />
+      <StationList
+        stops={stops}
+        predictions={predictions}
+        visible={stationListVisible}
+        onClose={() => setStationListVisible(false)}
+        onSelectStation={(stop) => {
+          setStationListVisible(false);
+          setView('map');
+          pendingStationRef.current = stop;
+        }}
       />
       <ConnectionBanner connected={connected} lastMessageTime={lastMessageTime} />
       <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
