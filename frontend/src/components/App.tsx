@@ -40,11 +40,15 @@ export function App() {
       <WeatherIndicator weather={weather} />
       <main id="main-content">
         {view === 'map' && (
-          <LiveMap vehicles={vehicles} predictions={predictions} alerts={alerts}
-            facilities={facilities} accessibilityOn={accessibilityOn} />
+          <ErrorBoundary fallbackMessage="Map failed to load">
+            <LiveMap vehicles={vehicles} predictions={predictions} alerts={alerts}
+              facilities={facilities} accessibilityOn={accessibilityOn} />
+          </ErrorBoundary>
         )}
         {view === 'boards' && (
-          <DepartureBoard predictions={predictions} alerts={alerts} facilities={facilities} />
+          <ErrorBoundary fallbackMessage="Departure board failed to load">
+            <DepartureBoard predictions={predictions} alerts={alerts} facilities={facilities} />
+          </ErrorBoundary>
         )}
       </main>
     </>
