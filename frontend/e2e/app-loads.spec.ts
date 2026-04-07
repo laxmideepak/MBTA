@@ -4,7 +4,7 @@ test.describe('App Loading', () => {
   test('renders the navigation bar', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByText('BOSTON SUBWAY')).toBeVisible();
-    await expect(page.getByText('LIVE')).toBeVisible();
+    await expect(page.getByText('LIVE', { exact: true })).toBeVisible();
   });
 
   test('shows Map and Boards tabs', async ({ page }) => {

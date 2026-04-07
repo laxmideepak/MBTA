@@ -13,7 +13,7 @@ test.describe('Departure Board', () => {
     const searchInput = page.getByPlaceholder(/search/i);
     await searchInput.fill('Park');
     // Should show dropdown results
-    await expect(page.getByText(/Park Street/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/Park Street/i).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('selecting a station shows departures', async ({ page }) => {
