@@ -39,6 +39,15 @@ export class StateManager {
     if (!list) return;
     this.state.predictions.set(stopId, list.filter((p) => p.id !== predictionId));
   }
+  removePredictionById(predictionId: string): void {
+    for (const [stopId, list] of this.state.predictions) {
+      const idx = list.findIndex((p) => p.id === predictionId);
+      if (idx >= 0) {
+        list.splice(idx, 1);
+        return;
+      }
+    }
+  }
 
   resetAlerts(alerts: Alert[]): void { this.state.alerts = alerts; }
   upsertAlert(alert: Alert): void {

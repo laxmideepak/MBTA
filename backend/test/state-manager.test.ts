@@ -69,6 +69,18 @@ describe('StateManager', () => {
       manager.removePrediction('pred-1', 'place-pktrm');
       expect(manager.getState().predictions.get('place-pktrm')).toHaveLength(0);
     });
+
+    it('removePredictionById removes without knowing the stop', () => {
+      manager.resetPredictions([pred]);
+      manager.removePredictionById('pred-1');
+      expect(manager.getState().predictions.get('place-pktrm')).toHaveLength(0);
+    });
+
+    it('removePredictionById is a no-op for unknown id', () => {
+      manager.resetPredictions([pred]);
+      manager.removePredictionById('does-not-exist');
+      expect(manager.getState().predictions.get('place-pktrm')).toHaveLength(1);
+    });
   });
 
   describe('alerts', () => {

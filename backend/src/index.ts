@@ -85,6 +85,7 @@ const mbtaStream = new MbtaStream({
         wsBroadcaster.broadcastPredictions({ type: 'upsert', prediction: event.data });
         break;
       case 'remove':
+        stateManager.removePredictionById(event.id);
         wsBroadcaster.broadcastPredictions({ type: 'reset', predictions: stateManager.getSnapshot().predictions });
         break;
     }
