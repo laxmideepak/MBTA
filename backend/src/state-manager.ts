@@ -10,7 +10,16 @@ export class StateManager {
     weather: null,
   };
 
-  getState(): SystemState { return this.state; }
+  getState(): SystemState {
+    return {
+      vehicles: new Map(this.state.vehicles),
+      predictions: new Map(this.state.predictions),
+      alerts: [...this.state.alerts],
+      facilities: new Map(this.state.facilities),
+      facilityStatuses: new Map(this.state.facilityStatuses),
+      weather: this.state.weather,
+    };
+  }
 
   resetVehicles(vehicles: Vehicle[]): void {
     this.state.vehicles.clear();
