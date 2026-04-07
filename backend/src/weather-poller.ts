@@ -27,7 +27,7 @@ export class WeatherPoller {
   private async poll(): Promise<void> {
     try {
       const response = await fetch(NWS_FORECAST_URL, {
-        headers: { 'User-Agent': 'BostonSubwayLive/1.0 (contact@example.com)' },
+        headers: { 'User-Agent': 'boston-subway-live (github.com/laxmideepak/MBTA)' },
       });
       if (!response.ok) { this.onWeather(null); return; }
       const json = await response.json();
