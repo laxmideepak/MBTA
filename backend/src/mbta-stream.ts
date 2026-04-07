@@ -62,28 +62,44 @@ export class MbtaStream {
     emit: (event: StreamEvent<T>) => void,
   ): void {
     es.addEventListener('reset', (e: MessageEvent) => {
-      const json = JSON.parse(e.data);
-      const items = Array.isArray(json) ? json : json.data ?? [json];
-      const parsed = (Array.isArray(items) ? items : [items]).map(parse);
-      emit({ type: 'reset', data: parsed });
+      try {
+        const json = JSON.parse(e.data);
+        const items = Array.isArray(json) ? json : json.data ?? [json];
+        const parsed = (Array.isArray(items) ? items : [items]).map(parse);
+        emit({ type: 'reset', data: parsed });
+      } catch (err) {
+        this.options.onError(label, err);
+      }
     });
 
     es.addEventListener('add', (e: MessageEvent) => {
-      const json = JSON.parse(e.data);
-      const resource = json.data ?? json;
-      emit({ type: 'add', data: parse(resource) });
+      try {
+        const json = JSON.parse(e.data);
+        const resource = json.data ?? json;
+        emit({ type: 'add', data: parse(resource) });
+      } catch (err) {
+        this.options.onError(label, err);
+      }
     });
 
     es.addEventListener('update', (e: MessageEvent) => {
-      const json = JSON.parse(e.data);
-      const resource = json.data ?? json;
-      emit({ type: 'update', data: parse(resource) });
+      try {
+        const json = JSON.parse(e.data);
+        const resource = json.data ?? json;
+        emit({ type: 'update', data: parse(resource) });
+      } catch (err) {
+        this.options.onError(label, err);
+      }
     });
 
     es.addEventListener('remove', (e: MessageEvent) => {
-      const json = JSON.parse(e.data);
-      const id = json.data?.id ?? json.id ?? '';
-      emit({ type: 'remove', id });
+      try {
+        const json = JSON.parse(e.data);
+        const id = json.data?.id ?? json.id ?? '';
+        emit({ type: 'remove', id });
+      } catch (err) {
+        this.options.onError(label, err);
+      }
     });
 
     es.onerror = (err) => this.options.onError(label, err);
