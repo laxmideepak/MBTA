@@ -1,5 +1,6 @@
 import { type FC } from 'react';
 import { getRouteColorHex, getRouteDisplayName } from '../utils/mbta-colors';
+import { DIRECTION_NAMES } from '../utils/mbta-routes';
 import { formatMinutesUntil } from '../utils/time-format';
 import type { Prediction } from '../types';
 import '../styles/tooltip.css';
@@ -14,21 +15,10 @@ interface TrainTooltipProps {
   progress: number;
 }
 
-const DIRECTION_LABELS: Record<string, Record<number, string>> = {
-  'Red': { 0: 'Ashmont/Braintree', 1: 'Alewife' },
-  'Orange': { 0: 'Forest Hills', 1: 'Oak Grove' },
-  'Blue': { 0: 'Bowdoin', 1: 'Wonderland' },
-  'Green-B': { 0: 'Boston College', 1: 'Government Center' },
-  'Green-C': { 0: 'Cleveland Circle', 1: 'Government Center' },
-  'Green-D': { 0: 'Riverside', 1: 'Union Square' },
-  'Green-E': { 0: 'Heath Street', 1: 'Medford/Tufts' },
-  'Mattapan': { 0: 'Mattapan', 1: 'Ashmont' },
-};
-
 export const TrainTooltip: FC<TrainTooltipProps> = ({ x, y, routeId, directionId, stopId, predictions, progress }) => {
   const color = getRouteColorHex(routeId);
   const lineName = getRouteDisplayName(routeId);
-  const direction = DIRECTION_LABELS[routeId]?.[directionId] ?? `Direction ${directionId}`;
+  const direction = DIRECTION_NAMES[routeId]?.[directionId] ?? `Direction ${directionId}`;
 
   const upcoming = predictions
     .filter((p) => p.directionId === directionId && p.arrivalTime)
