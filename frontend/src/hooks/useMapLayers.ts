@@ -9,6 +9,7 @@ export function useMapLayers(
   accessibilityOn: boolean,
   brokenStopIds: Set<string>,
   onStationClick?: (stop: Stop, x: number, y: number) => void,
+  focusedStop?: Stop | null,
 ) {
   const staticLayersRef = useRef<any[]>([]);
 
@@ -61,8 +62,28 @@ export function useMapLayers(
       },
     } as any);
 
-    staticLayersRef.current = [routeLayer, stationLayer];
-  }, [routeShapes, stops, accessibilityOn, brokenStopIds, onStationClick]);
+    const layers: any[] = [routeLayer, stationLayer];
+
+    if (focusedStop) {
+      layers.push(new ScatterplotLayer({
+        id: 'station-focus-ring',
+        data: [focusedStop],
+        getPosition: (d: Stop) => [d.longitude, d.latitude, 0],
+        getFillColor: [255, 255, 255, 0],
+        getLineColor: [255, 255, 255, 255],
+        getRadius: 60,
+        radiusUnits: 'meters',
+        radiusMinPixels: 6,
+        radiusMaxPixels: 24,
+        stroked: true,
+        filled: false,
+        lineWidthMinPixels: 3,
+        pickable: false,
+      } as any));
+    }
+
+    staticLayersRef.current = layers;
+  }, [routeShapes, stops, accessibilityOn, brokenStopIds, onStationClick, focusedStop]);
 
   return staticLayersRef;
 }

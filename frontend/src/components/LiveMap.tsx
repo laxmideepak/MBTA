@@ -47,7 +47,7 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
   }, [facilities]);
 
   const { getTrainLayers } = useTrainAnimation(vehicles, routeShapes);
-  const staticLayersRef = useMapLayers(routeShapes, stops, accessibilityOn, brokenStopIds, handleStationClick);
+  const staticLayersRef = useMapLayers(routeShapes, stops, accessibilityOn, brokenStopIds, handleStationClick, null);
 
   // Initialize map once
   useEffect(() => {
