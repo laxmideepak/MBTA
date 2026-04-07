@@ -7,6 +7,7 @@ import { StationPopup } from '../overlays/StationPopup';
 import { useRouteData } from '../hooks/useRouteData';
 import { useTrainAnimation } from '../hooks/useTrainAnimation';
 import { useMapLayers } from '../hooks/useMapLayers';
+import { useKeyboardMapNav } from '../hooks/useKeyboardMapNav';
 import type { Vehicle, Prediction, Alert, FacilityWithStatus, Stop } from '../types';
 
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY ?? '';
@@ -47,7 +48,23 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
   }, [facilities]);
 
   const { getTrainLayers } = useTrainAnimation(vehicles, routeShapes);
-  const staticLayersRef = useMapLayers(routeShapes, stops, accessibilityOn, brokenStopIds, handleStationClick, null);
+
+  const { focusedStop } = useKeyboardMapNav({
+    stops,
+    mapContainer: mapContainerRef.current,
+    onStationSelect: (stop) => {
+      // Pan map to station
+      mapRef.current?.flyTo({ center: [stop.longitude, stop.latitude], duration: 500 });
+    },
+    onStationActivate: (stop, x, y) => {
+      setSelectedStation({ stop, x, y });
+    },
+    onDismiss: () => {
+      setSelectedStation(null);
+    },
+  });
+
+  const staticLayersRef = useMapLayers(routeShapes, stops, accessibilityOn, brokenStopIds, handleStationClick, focusedStop);
 
   // Initialize map once
   useEffect(() => {
@@ -95,7 +112,13 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <AlertBanner alerts={alerts} />
-      <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+      <div
+        ref={mapContainerRef}
+        style={{ width: '100%', height: '100%' }}
+        tabIndex={0}
+        role="application"
+        aria-label="Live train map. Use arrow keys to navigate stations."
+      />
       {hoverInfo && (
         <TrainTooltip
           x={hoverInfo.x} y={hoverInfo.y}
