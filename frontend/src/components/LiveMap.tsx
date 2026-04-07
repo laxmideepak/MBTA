@@ -136,7 +136,12 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
           getTimestamps: (d: any) => d.timestamps,
           getColor: (d: any) => {
             const base = getRouteColor(d.routeId);
-            return [Math.floor(base[0] * 0.7), Math.floor(base[1] * 0.7), Math.floor(base[2] * 0.7)];
+            // Bright full color so the train highlights the route as it passes
+            return [
+              Math.min(255, Math.floor(base[0] * 1.3)),
+              Math.min(255, Math.floor(base[1] * 1.3)),
+              Math.min(255, Math.floor(base[2] * 1.3)),
+            ];
           },
           opacity: 1,
           widthMinPixels: 7,
@@ -223,7 +228,7 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
       filled: false,
       lineWidthScale: 1,
       lineWidthMinPixels: 12,
-      getLineColor: (f: any) => [...getRouteColor(f.properties.routeId), 50],
+      getLineColor: (f: any) => [...getRouteColor(f.properties.routeId), 90],
       getLineWidth: 1,
       parameters: { depthTest: false, depthWrite: false },
     } as any);
