@@ -35,6 +35,9 @@ export function App() {
         onAccessibilityToggle={() => setAccessibilityOn((prev) => !prev)}
         connected={connected}
       />
+      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {connected ? `Tracking ${vehicles.length} trains live` : 'Connecting to live data...'}
+      </div>
       <WeatherIndicator weather={weather} />
       {view === 'map' && (
         <LiveMap vehicles={vehicles} predictions={predictions} alerts={alerts}
