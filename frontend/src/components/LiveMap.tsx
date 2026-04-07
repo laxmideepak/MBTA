@@ -56,6 +56,7 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
   const mapRef = useRef<maplibregl.Map | null>(null);
   const overlayRef = useRef<MapboxOverlay | null>(null);
   const trainStatesRef = useRef<Map<string, TrainState>>(new Map());
+  const staticLayersDataRef = useRef<any[]>([]);
 
   const [routeShapes, setRouteShapes] = useState<Map<string, { routeId: string; path: [number, number][] }[]>>(new Map());
   const [stops, setStops] = useState<Stop[]>([]);
@@ -149,7 +150,7 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
         if (!overlayRef.current) return;
 
         const states = trainStatesRef.current;
-        const staticLayers = (window as any).__mbtaStaticLayers || [];
+        const staticLayers = staticLayersDataRef.current;
 
         // ── LERP all trains toward their targets ──
         for (const [, state] of states) {
@@ -348,7 +349,7 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
       pickable: true,
     } as any);
 
-    (window as any).__mbtaStaticLayers = [routeLayer, stationLayer];
+    staticLayersDataRef.current = [routeLayer, stationLayer];
   }, [routeShapes, stops, accessibilityOn, brokenStopIds]);
 
   return (
