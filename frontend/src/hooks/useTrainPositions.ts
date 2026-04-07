@@ -1,53 +1,81 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import type { Vehicle } from '../types';
 import type { RoutePathData } from '../layers/RouteLayer';
-import type { TrainSegment } from '../layers/TrainLayer';
+import type { TrainTripData } from '../layers/TrainLayer';
 import { findNearestPointIndex } from '../utils/snap-to-route';
 
-// How many route coordinate points to include in the trail behind the train.
-// Longer = more visible "worm" on the track.
-const TRAIL_POINTS = 40;
+// Same as London Underground
+function getSecondsSinceUtcMidnight(): number {
+  const now = new Date();
+  return now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 +
+    now.getUTCSeconds() + now.getUTCMilliseconds() / 1000;
+}
 
-export function useTrainPositions(
+// Build trip data for TripsLayer.
+//
+// London Underground has actual timetable paths with real timestamps.
+// We have GPS positions on a route shape. To make TripsLayer work, we assign
+// timestamps to route coordinates such that:
+// - The vehicle's current position (headIdx) gets timestamp = NOW (seconds since midnight)
+// - Earlier points on the route get decreasing timestamps (1 second per coordinate)
+// - Later points get increasing timestamps
+//
+// This means TripsLayer's currentTime (also seconds since midnight) will render
+// a bright segment at the vehicle's current position with a trail behind it.
+export function useTrainTrips(
   vehicles: Vehicle[],
   routeShapes: Map<string, RoutePathData[]>,
-): TrainSegment[] {
+): TrainTripData[] {
   return useMemo(() => {
-    const segments: TrainSegment[] = [];
+    const now = getSecondsSinceUtcMidnight();
+    const trips: TrainTripData[] = [];
 
     for (const vehicle of vehicles) {
       const shapes = routeShapes.get(vehicle.routeId);
       if (!shapes || shapes.length === 0) continue;
 
-      // Pick the shape for this direction
       const shape = shapes[Math.min(vehicle.directionId, shapes.length - 1)] ?? shapes[0];
-      const routeCoords = shape.path;
-      if (routeCoords.length < 2) continue;
+      const coords = shape.path;
+      if (coords.length < 2) continue;
 
-      // Find where this vehicle is on the route
-      const headIdx = findNearestPointIndex(vehicle.longitude, vehicle.latitude, routeCoords);
+      const headIdx = findNearestPointIndex(vehicle.longitude, vehicle.latitude, coords);
+      const progress = Math.round((headIdx / (coords.length - 1)) * 100);
 
-      // Build segment: trail behind the head position
-      const startIdx = Math.max(0, headIdx - TRAIL_POINTS);
-      const segment = routeCoords.slice(startIdx, headIdx + 1);
+      // Assign timestamps: head = now, each point is 1 second apart
+      const timestamps = coords.map((_, i) => now - (headIdx - i));
 
-      if (segment.length < 2) continue;
-
-      const progress = Math.round((headIdx / (routeCoords.length - 1)) * 100);
-
-      segments.push({
+      trips.push({
         vehicleId: vehicle.id,
         routeId: vehicle.routeId,
-        segment,
-        bearing: vehicle.bearing,
-        currentStatus: vehicle.currentStatus,
-        stopId: vehicle.stopId,
+        path: coords,
+        timestamps,
         directionId: vehicle.directionId,
+        stopId: vehicle.stopId,
         label: vehicle.label,
         progress,
       });
     }
 
-    return segments;
+    return trips;
   }, [vehicles, routeShapes]);
+}
+
+// Animation loop: returns current time (seconds since UTC midnight)
+// Updated every frame via requestAnimationFrame, exactly like London Underground.
+export function useAnimationTime(): number {
+  const [time, setTime] = useState(getSecondsSinceUtcMidnight);
+  const rafRef = useRef(0);
+
+  useEffect(() => {
+    let running = true;
+    function animate() {
+      if (!running) return;
+      setTime(getSecondsSinceUtcMidnight());
+      rafRef.current = requestAnimationFrame(animate);
+    }
+    rafRef.current = requestAnimationFrame(animate);
+    return () => { running = false; cancelAnimationFrame(rafRef.current); };
+  }, []);
+
+  return time;
 }

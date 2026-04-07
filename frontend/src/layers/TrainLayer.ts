@@ -1,45 +1,42 @@
-import { PathLayer } from '@deck.gl/layers';
+import { TripsLayer } from '@deck.gl/geo-layers';
 import { getRouteColor } from '../utils/mbta-colors';
 
-export interface TrainSegment {
+// Each train trip for the TripsLayer
+export interface TrainTripData {
   vehicleId: string;
   routeId: string;
-  segment: [number, number][];  // short polyline [lng, lat][]
-  bearing: number;
-  currentStatus: string;
-  stopId: string;
+  path: [number, number][];   // route coordinates [lng, lat]
+  timestamps: number[];        // seconds-since-UTC-midnight for each coordinate
   directionId: number;
+  stopId: string;
   label: string;
-  progress: number;
+  progress: number;            // 0-100
 }
 
-// Each train is a bright, shorter colored segment on top of the faint route.
-// This is how londonunderground.live renders trains — colored polyline segments
-// moving along the wider faint route lines.
-export function createTrainLayer(trains: TrainSegment[]) {
-  const valid = trains.filter((t) => t.segment.length >= 2);
-  return new PathLayer({
-    id: 'train-trails',
-    data: valid,
-    getPath: (d: TrainSegment) => d.segment,
-    getColor: (d: TrainSegment) => {
+// Exact copy of London Underground's TripsLayer config:
+// getColor: baseColor * 0.7 (darker), trailLength: 20, widthMinPixels: 7
+export function createTrainLayer(trips: TrainTripData[], currentTime: number) {
+  return new TripsLayer({
+    id: 'trips',
+    data: trips,
+    getPath: (d: TrainTripData) => d.path,
+    getTimestamps: (d: TrainTripData) => d.timestamps,
+    getColor: (d: TrainTripData) => {
       const base = getRouteColor(d.routeId);
       return [
-        Math.min(255, Math.floor(base[0] * 1.1)),
-        Math.min(255, Math.floor(base[1] * 1.1)),
-        Math.min(255, Math.floor(base[2] * 1.1)),
-        255,
+        Math.floor(base[0] * 0.7),
+        Math.floor(base[1] * 0.7),
+        Math.floor(base[2] * 0.7),
       ];
     },
-    getWidth: 6,
-    widthUnits: 'pixels' as const,
-    widthMinPixels: 4,
-    widthMaxPixels: 10,
-    capRounded: true,
+    opacity: 1,
+    widthMinPixels: 7,
+    billboard: false,
     jointRounded: true,
+    capRounded: true,
+    trailLength: 20,
+    currentTime,
+    parameters: { depthTest: true, depthWrite: true },
     pickable: true,
-    transitions: {
-      getPath: { duration: 3000, type: 'interpolation' },
-    },
   } as any);
 }
