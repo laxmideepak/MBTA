@@ -34,6 +34,6 @@ describe('TrainTooltip', () => {
       departureTime: null, status: null, tripId: 't1', vehicleId: 'v1', stopSequence: 1,
     }];
     render(<TrainTooltip {...defaultProps} predictions={predictions} />);
-    expect(screen.getByText('Next stops')).toBeDefined();
+    expect(screen.getByText('Future Stops')).toBeDefined();
   });
 });

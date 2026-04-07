@@ -29,6 +29,7 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
   const [hoverInfo, setHoverInfo] = useState<{
     x: number; y: number;
     routeId: string; directionId: number; stopId: string; progress: number;
+    label?: string; currentStatus?: string;
   } | null>(null);
 
   const [selectedStation, setSelectedStation] = useState<{ stop: Stop; x: number; y: number } | null>(null);
@@ -89,7 +90,11 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
 
       const onHover = ({ object, x, y }: any) => {
         if (object) {
-          setHoverInfo({ x, y, routeId: object.routeId, directionId: object.directionId, stopId: object.stopId, progress: object.progress });
+          setHoverInfo({
+            x, y, routeId: object.routeId, directionId: object.directionId,
+            stopId: object.stopId, progress: object.progress,
+            label: object.label, currentStatus: object.currentStatus,
+          });
         } else {
           setHoverInfo(null);
         }
@@ -125,6 +130,8 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
           routeId={hoverInfo.routeId}
           directionId={hoverInfo.directionId}
           stopId={hoverInfo.stopId}
+          label={hoverInfo.label}
+          currentStatus={hoverInfo.currentStatus}
           predictions={predictions[hoverInfo.stopId] ?? []}
           progress={hoverInfo.progress}
         />
