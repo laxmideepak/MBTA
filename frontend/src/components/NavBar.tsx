@@ -22,9 +22,14 @@ export const NavBar: FC<NavBarProps> = ({ view, onViewChange, accessibilityOn, o
       <button className={`nav-tab ${view === 'boards' ? 'active' : ''}`} onClick={() => onViewChange('boards')}>Boards</button>
     </div>
     <div className="nav-right">
-      <button className={`accessibility-toggle ${accessibilityOn ? 'active' : ''}`}
-        onClick={onAccessibilityToggle} title="Toggle accessibility overlay" aria-label="Toggle accessibility overlay">
-        ♿
+      <button
+        className={`accessibility-toggle ${accessibilityOn ? 'active' : ''}`}
+        onClick={onAccessibilityToggle}
+        aria-label="Toggle accessibility overlay"
+        aria-pressed={accessibilityOn}
+      >
+        <span aria-hidden="true">♿</span>
+        <span className="sr-only">Accessibility</span>
       </button>
     </div>
   </nav>
