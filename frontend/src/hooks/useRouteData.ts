@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Stop } from '../types';
+import { setStopNames } from '../utils/stop-names';
 
 export function useRouteData() {
   const [routeShapes, setRouteShapes] = useState<Map<string, { routeId: string; path: [number, number][] }[]>>(new Map());
@@ -22,14 +23,16 @@ export function useRouteData() {
         setRouteShapes(shapesMap);
 
         const stopsJson = await stopsRes.json();
-        setStops(stopsJson.data.map((s: any) => ({
+        const parsedStops: Stop[] = stopsJson.data.map((s: any) => ({
           id: s.id,
           name: s.attributes.name,
           latitude: s.attributes.latitude,
           longitude: s.attributes.longitude,
           wheelchairBoarding: s.attributes.wheelchair_boarding ?? 0,
           routeIds: [],
-        })));
+        }));
+        setStops(parsedStops);
+        setStopNames(parsedStops);
 
         setLoading(false);
       })
