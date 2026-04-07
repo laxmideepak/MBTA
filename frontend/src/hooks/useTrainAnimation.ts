@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
 import { findNearestPointIndex } from '../utils/snap-to-route';
 import { getRouteColor } from '../utils/mbta-colors';
 import type { Vehicle } from '../types';
@@ -162,5 +163,51 @@ export function useTrainAnimation(
     return dotData;
   }
 
-  return { trainStatesRef, getTrailData, getDotData };
+  function getTrainLayers(onHover: (info: any) => void) {
+    const trailData = getTrailData();
+    const dotData = getDotData();
+
+    const trailLayer = new PathLayer({
+      id: 'train-trails',
+      data: trailData,
+      getPath: (d: any) => d.trail,
+      getColor: (d: any) => {
+        const base = getRouteColor(d.routeId);
+        return [
+          Math.min(255, Math.floor(base[0] * 1.2)),
+          Math.min(255, Math.floor(base[1] * 1.2)),
+          Math.min(255, Math.floor(base[2] * 1.2)),
+          200,
+        ];
+      },
+      getWidth: 6,
+      widthUnits: 'pixels',
+      widthMinPixels: 4,
+      widthMaxPixels: 10,
+      capRounded: true,
+      jointRounded: true,
+      pickable: true,
+      onHover,
+    } as any);
+
+    const dotLayer = new ScatterplotLayer({
+      id: 'train-dots',
+      data: dotData,
+      getPosition: (d: any) => d.position,
+      getFillColor: (d: any) => [...getRouteColor(d.routeId), 255],
+      getLineColor: [255, 255, 255, 220],
+      getRadius: 6,
+      radiusUnits: 'pixels',
+      radiusMinPixels: 4,
+      radiusMaxPixels: 10,
+      stroked: true,
+      lineWidthMinPixels: 2,
+      pickable: true,
+      onHover,
+    } as any);
+
+    return [trailLayer, dotLayer];
+  }
+
+  return { trainStatesRef, getTrailData, getDotData, getTrainLayers };
 }
