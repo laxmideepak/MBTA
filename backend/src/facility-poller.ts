@@ -46,14 +46,17 @@ export class FacilityPoller {
 
   private async poll(): Promise<void> {
     try {
-      const [facilitiesRes, statusesRes] = await Promise.all([
-        fetch(`https://api-v3.mbta.com/facilities?filter[type]=ELEVATOR,ESCALATOR&api_key=${this.apiKey}`),
-        fetch(`https://api-v3.mbta.com/live_facilities?api_key=${this.apiKey}`),
-      ]);
-      const facilitiesJson = await facilitiesRes.json();
-      const statusesJson = await statusesRes.json();
-      const facilities = facilitiesJson.data.map((r: MbtaResource) => parseFacility(r));
-      const statuses = parseFacilityStatusFromApi(statusesJson);
+      const response = await fetch(
+        `https://api-v3.mbta.com/facilities?filter[type]=ELEVATOR,ESCALATOR&api_key=${this.apiKey}`
+      );
+      if (!response.ok) {
+        this.onError(new Error(`Facilities API returned ${response.status}`));
+        return;
+      }
+      const json = await response.json();
+      const data = json.data ?? [];
+      const facilities = data.map((r: MbtaResource) => parseFacility(r)).filter(Boolean);
+      const statuses = parseFacilityStatusFromApi({ data });
       this.onFacilities(facilities);
       this.onStatuses(statuses);
     } catch (err) { this.onError(err); }
