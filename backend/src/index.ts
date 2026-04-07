@@ -26,14 +26,29 @@ const stateManager = new StateManager();
 const wsBroadcaster = new WsBroadcaster(server, stateManager);
 
 const startTime = Date.now();
+let lastSseEventTime = 0;
 
 app.get('/health', (_req, res) => {
+  const sseAge = lastSseEventTime ? Math.floor((Date.now() - lastSseEventTime) / 1000) : -1;
+  const status = sseAge > 300 ? 'unhealthy' : sseAge > 120 ? 'degraded' : 'ok';
   res.json({
-    status: 'ok',
+    status,
     uptime: Math.floor((Date.now() - startTime) / 1000),
     vehicles: stateManager.getState().vehicles.size,
     alerts: stateManager.getState().alerts.length,
+    lastSseEventAge: sseAge,
+    memoryUsage: Math.floor(process.memoryUsage().heapUsed / 1024 / 1024),
   });
+});
+
+app.get('/ready', (_req, res) => {
+  const hasVehicles = stateManager.getState().vehicles.size > 0;
+  const sseConnected = lastSseEventTime > 0;
+  if (hasVehicles && sseConnected) {
+    res.json({ ready: true });
+  } else {
+    res.status(503).json({ ready: false, reason: !sseConnected ? 'SSE not connected' : 'No vehicle data' });
+  }
 });
 
 let stopsCache: { data: any; expiry: number } | null = null;
@@ -72,6 +87,7 @@ app.get('/api/stops', async (_req, res) => {
 const mbtaStream = new MbtaStream({
   apiKey: MBTA_API_KEY,
   onVehicleEvent: (event) => {
+    lastSseEventTime = Date.now();
     switch (event.type) {
       case 'reset':
         stateManager.resetVehicles(event.data as Vehicle[]);
@@ -89,6 +105,7 @@ const mbtaStream = new MbtaStream({
     }
   },
   onPredictionEvent: (event) => {
+    lastSseEventTime = Date.now();
     switch (event.type) {
       case 'reset':
         stateManager.resetPredictions(event.data as Prediction[]);
@@ -106,6 +123,7 @@ const mbtaStream = new MbtaStream({
     }
   },
   onAlertEvent: (event) => {
+    lastSseEventTime = Date.now();
     switch (event.type) {
       case 'reset':
         stateManager.resetAlerts(event.data as Alert[]);
