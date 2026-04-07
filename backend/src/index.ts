@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { StateManager } from './state-manager.js';
 import { MbtaStream } from './mbta-stream.js';
@@ -9,6 +11,8 @@ import { FacilityPoller } from './facility-poller.js';
 import { WeatherPoller } from './weather-poller.js';
 import { loadShapes } from './gtfs-loader.js';
 import type { Vehicle, Prediction, Alert } from './types.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
 const MBTA_API_KEY = process.env.MBTA_API_KEY ?? '';
@@ -20,6 +24,11 @@ if (!MBTA_API_KEY) {
 
 const app = express();
 app.use(cors());
+
+if (process.env.NODE_ENV === 'production') {
+  const staticPath = path.join(__dirname, '../../frontend/dist');
+  app.use(express.static(staticPath));
+}
 
 const server = createServer(app);
 const stateManager = new StateManager();
@@ -83,6 +92,12 @@ app.get('/api/stops', async (_req, res) => {
     res.status(500).json({ error: 'Failed to fetch stops' });
   }
 });
+
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(__dirname, '../../frontend/dist/index.html'));
+  });
+}
 
 const mbtaStream = new MbtaStream({
   apiKey: MBTA_API_KEY,
