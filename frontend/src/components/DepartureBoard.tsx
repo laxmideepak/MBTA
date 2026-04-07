@@ -197,3 +197,5 @@ export function DepartureBoard({ predictions, alerts, facilities }: DepartureBoa
     </div>
   );
 }
+
+export default DepartureBoard;

@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { AlertBanner } from '../overlays/AlertBanner';
 import { TrainTooltip } from '../overlays/TrainTooltip';
+import { StationPopup } from '../overlays/StationPopup';
 import { useRouteData } from '../hooks/useRouteData';
 import { useTrainAnimation } from '../hooks/useTrainAnimation';
 import { useMapLayers } from '../hooks/useMapLayers';
-import type { Vehicle, Prediction, Alert, FacilityWithStatus } from '../types';
+import type { Vehicle, Prediction, Alert, FacilityWithStatus, Stop } from '../types';
 
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY ?? '';
 const MAP_STYLE = `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${MAPTILER_KEY}`;
@@ -102,3 +103,5 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
     </div>
   );
 }
+
+export default LiveMap;
