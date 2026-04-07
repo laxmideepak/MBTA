@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { getRouteColorHex, getRouteDisplayName } from '../utils/mbta-colors';
 import { DIRECTION_NAMES } from '../utils/mbta-routes';
 import { useGeolocation } from '../hooks/useGeolocation';
@@ -18,6 +18,38 @@ interface DepartureBoardProps {
   alerts: Alert[];
   facilities: FacilityWithStatus[];
 }
+
+const PlatformSection = React.memo(function PlatformSection({
+  routeId,
+  predictions,
+}: {
+  routeId: string;
+  predictions: Prediction[];
+}) {
+  return (
+    <div className="board-platform">
+      <div className="board-platform-header">
+        <div className="board-platform-color" style={{ background: getRouteColorHex(routeId) }} />
+        <span className="board-platform-name">{getRouteDisplayName(routeId)}</span>
+        <span className="board-live-badge">LIVE</span>
+      </div>
+      {predictions.slice(0, 5).map((pred, i) => {
+        const timeStr = formatBoardTime(pred.arrivalTime!);
+        const destination = DIRECTION_NAMES[routeId]?.[pred.directionId] ?? `Direction ${pred.directionId}`;
+        return (
+          <div key={pred.id} className="board-row">
+            <span className="board-row-num">{i + 1}</span>
+            <span className="board-row-dest">{destination}</span>
+            <span className={`board-row-time ${timeStr === 'Due' ? 'due' : ''}`}>{timeStr}</span>
+          </div>
+        );
+      })}
+      {predictions.length === 0 && (
+        <div className="board-empty">No trains scheduled</div>
+      )}
+    </div>
+  );
+});
 
 export function DepartureBoard({ predictions, alerts, facilities }: DepartureBoardProps) {
   const [stops, setStops] = useState<Stop[]>([]);
@@ -147,27 +179,7 @@ export function DepartureBoard({ predictions, alerts, facilities }: DepartureBoa
 
         {/* Departures by route */}
         {selectedStop && Array.from(predsByRoute.entries()).map(([routeId, preds]) => (
-          <div key={routeId} className="board-platform">
-            <div className="board-platform-header">
-              <div className="board-platform-color" style={{ background: getRouteColorHex(routeId) }} />
-              <span className="board-platform-name">{getRouteDisplayName(routeId)}</span>
-              <span className="board-live-badge">LIVE</span>
-            </div>
-            {preds.slice(0, 5).map((pred, i) => {
-              const timeStr = formatBoardTime(pred.arrivalTime!);
-              const destination = DIRECTION_NAMES[routeId]?.[pred.directionId] ?? `Direction ${pred.directionId}`;
-              return (
-                <div key={pred.id} className="board-row">
-                  <span className="board-row-num">{i + 1}</span>
-                  <span className="board-row-dest">{destination}</span>
-                  <span className={`board-row-time ${timeStr === 'Due' ? 'due' : ''}`}>{timeStr}</span>
-                </div>
-              );
-            })}
-            {preds.length === 0 && (
-              <div className="board-empty">No trains scheduled</div>
-            )}
-          </div>
+          <PlatformSection key={routeId} routeId={routeId} predictions={preds} />
         ))}
 
         {selectedStop && predsByRoute.size === 0 && (
