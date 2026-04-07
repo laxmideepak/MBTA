@@ -10,8 +10,14 @@ export function useSystemState() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [facilities, setFacilities] = useState<FacilityWithStatus[]>([]);
   const [weather, setWeather] = useState<Weather | null>(null);
+  const [lastMessageTime, setLastMessageTime] = useState(0);
 
   const handleMessage = useCallback((msg: WsMessage) => {
+    setLastMessageTime(Date.now());
+    if (!msg || typeof msg.type !== 'string') {
+      console.warn('[WS] Dropping malformed message:', msg);
+      return;
+    }
     switch (msg.type) {
       case 'full-state': {
         const data = msg.data as SystemSnapshot;
