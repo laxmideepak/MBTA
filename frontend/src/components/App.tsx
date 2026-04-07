@@ -14,6 +14,18 @@ export function App() {
 
   return (
     <>
+      <a
+        href="#main-content"
+        className="sr-only"
+        style={{
+          position: 'absolute', top: '-40px', left: 0,
+          background: '#000', color: '#fff', padding: '8px', zIndex: 10000,
+        }}
+        onFocus={(e) => { (e.target as HTMLElement).style.top = '0'; }}
+        onBlur={(e) => { (e.target as HTMLElement).style.top = '-40px'; }}
+      >
+        Skip to main content
+      </a>
       {!connected && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 9999,
@@ -39,13 +51,15 @@ export function App() {
         {connected ? `Tracking ${vehicles.length} trains live` : 'Connecting to live data...'}
       </div>
       <WeatherIndicator weather={weather} />
-      {view === 'map' && (
-        <LiveMap vehicles={vehicles} predictions={predictions} alerts={alerts}
-          facilities={facilities} accessibilityOn={accessibilityOn} />
-      )}
-      {view === 'boards' && (
-        <DepartureBoard predictions={predictions} alerts={alerts} facilities={facilities} />
-      )}
+      <main id="main-content">
+        {view === 'map' && (
+          <LiveMap vehicles={vehicles} predictions={predictions} alerts={alerts}
+            facilities={facilities} accessibilityOn={accessibilityOn} />
+        )}
+        {view === 'boards' && (
+          <DepartureBoard predictions={predictions} alerts={alerts} facilities={facilities} />
+        )}
+      </main>
     </>
   );
 }
