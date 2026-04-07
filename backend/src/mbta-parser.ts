@@ -1,23 +1,33 @@
 import type { Vehicle, Prediction, Alert, Facility, MbtaResource } from './types.js';
 
-export function parseVehicle(resource: MbtaResource): Vehicle {
+export function parseVehicle(resource: MbtaResource): Vehicle | null {
   const attrs = resource.attributes;
   const rels = resource.relationships ?? {};
+
+  const latitude = attrs.latitude as number;
+  const longitude = attrs.longitude as number;
+  if (latitude == null || longitude == null || isNaN(latitude) || isNaN(longitude)) {
+    return null;
+  }
+
   return {
     id: resource.id,
     routeId: rels.route?.data?.id ?? '',
-    latitude: attrs.latitude as number,
-    longitude: attrs.longitude as number,
+    latitude,
+    longitude,
     bearing: (attrs.bearing as number) ?? 0,
-    currentStatus: attrs.current_status as Vehicle['currentStatus'],
+    currentStatus: (attrs.current_status as Vehicle['currentStatus']) ?? 'IN_TRANSIT_TO',
     stopId: rels.stop?.data?.id ?? '',
-    directionId: attrs.direction_id as number,
+    directionId: (attrs.direction_id as number) ?? 0,
     label: (attrs.label as string) ?? '',
-    updatedAt: attrs.updated_at as string,
+    updatedAt: (attrs.updated_at as string) ?? '',
   };
 }
 
-export function parsePrediction(resource: MbtaResource): Prediction {
+export function parsePrediction(resource: MbtaResource): Prediction | null {
+  if (!resource.id) {
+    return null;
+  }
   const attrs = resource.attributes;
   const rels = resource.relationships ?? {};
   return {
@@ -34,8 +44,14 @@ export function parsePrediction(resource: MbtaResource): Prediction {
   };
 }
 
-export function parseAlert(resource: MbtaResource): Alert {
+export function parseAlert(resource: MbtaResource): Alert | null {
+  if (!resource.id) {
+    return null;
+  }
   const attrs = resource.attributes;
+  if (!attrs.header) {
+    return null;
+  }
   const rawEntities = (attrs.informed_entity as Array<Record<string, unknown>>) ?? [];
   return {
     id: resource.id,
@@ -57,15 +73,22 @@ export function parseAlert(resource: MbtaResource): Alert {
   };
 }
 
-export function parseFacility(resource: MbtaResource): Facility {
+export function parseFacility(resource: MbtaResource): Facility | null {
+  if (!resource.id) {
+    return null;
+  }
   const attrs = resource.attributes;
   const rels = resource.relationships ?? {};
+  const stopId = rels.stop?.data?.id ?? '';
+  if (!stopId) {
+    return null;
+  }
   return {
     id: resource.id,
     longName: attrs.long_name as string,
     shortName: attrs.short_name as string,
     type: attrs.type as Facility['type'],
-    stopId: rels.stop?.data?.id ?? '',
+    stopId,
     latitude: (attrs.latitude as number) ?? null,
     longitude: (attrs.longitude as number) ?? null,
   };

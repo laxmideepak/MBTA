@@ -31,6 +31,7 @@ describe('parseVehicle', () => {
       },
     };
     const vehicle = parseVehicle(raw);
+    expect(vehicle).not.toBeNull();
     expect(vehicle).toEqual({
       id: 'y1234',
       routeId: 'Red',
@@ -63,8 +64,9 @@ describe('parseVehicle', () => {
       },
     };
     const vehicle = parseVehicle(raw);
-    expect(vehicle.stopId).toBe('');
-    expect(vehicle.routeId).toBe('Orange');
+    expect(vehicle).not.toBeNull();
+    expect(vehicle!.stopId).toBe('');
+    expect(vehicle!.routeId).toBe('Orange');
   });
 });
 
@@ -89,6 +91,7 @@ describe('parsePrediction', () => {
       },
     };
     const prediction = parsePrediction(raw);
+    expect(prediction).not.toBeNull();
     expect(prediction).toEqual({
       id: 'prediction-12345', routeId: 'Red', stopId: 'place-pktrm',
       directionId: 0, arrivalTime: '2026-04-06T12:10:00-04:00',
@@ -114,9 +117,10 @@ describe('parsePrediction', () => {
       },
     };
     const prediction = parsePrediction(raw);
-    expect(prediction.arrivalTime).toBeNull();
-    expect(prediction.vehicleId).toBeNull();
-    expect(prediction.status).toBe('Arriving');
+    expect(prediction).not.toBeNull();
+    expect(prediction!.arrivalTime).toBeNull();
+    expect(prediction!.vehicleId).toBeNull();
+    expect(prediction!.status).toBe('Arriving');
   });
 });
 
@@ -145,6 +149,7 @@ describe('parseAlert', () => {
       relationships: {},
     };
     const alert = parseAlert(raw);
+    expect(alert).not.toBeNull();
     expect(alert).toEqual({
       id: 'alert-500', effect: 'SHUTTLE', cause: 'MAINTENANCE',
       header: 'Red Line shuttle buses',
@@ -157,6 +162,89 @@ describe('parseAlert', () => {
       }],
       updatedAt: '2026-04-06T08:00:00-04:00',
     });
+  });
+});
+
+describe('parseVehicle null cases', () => {
+  it('returns null when latitude is null', () => {
+    const raw = {
+      type: 'vehicle',
+      id: 'y0000',
+      attributes: {
+        latitude: null,
+        longitude: -71.0565,
+        bearing: 0,
+        current_status: 'IN_TRANSIT_TO',
+        direction_id: 0,
+        label: 'test',
+        updated_at: '2026-04-06T12:00:00-04:00',
+      },
+      relationships: {},
+    };
+    expect(parseVehicle(raw)).toBeNull();
+  });
+
+  it('returns null when longitude is undefined', () => {
+    const raw = {
+      type: 'vehicle',
+      id: 'y0001',
+      attributes: {
+        latitude: 42.3555,
+        longitude: undefined,
+        bearing: 0,
+        current_status: 'IN_TRANSIT_TO',
+        direction_id: 0,
+        label: 'test',
+        updated_at: '2026-04-06T12:00:00-04:00',
+      },
+      relationships: {},
+    };
+    expect(parseVehicle(raw as any)).toBeNull();
+  });
+});
+
+describe('parsePrediction null cases', () => {
+  it('returns null when id is missing', () => {
+    const raw = {
+      type: 'prediction',
+      id: '',
+      attributes: {
+        arrival_time: null, departure_time: null, direction_id: 0,
+        stop_sequence: 1, status: null,
+      },
+      relationships: {},
+    };
+    expect(parsePrediction(raw)).toBeNull();
+  });
+});
+
+describe('parseAlert null cases', () => {
+  it('returns null when id is missing', () => {
+    const raw = {
+      type: 'alert',
+      id: '',
+      attributes: {
+        effect: 'DELAY', cause: 'MAINTENANCE', header: 'Some alert',
+        severity: 3, lifecycle: 'ONGOING', active_period: [],
+        informed_entity: [], updated_at: '2026-04-06T08:00:00-04:00',
+      },
+      relationships: {},
+    };
+    expect(parseAlert(raw)).toBeNull();
+  });
+
+  it('returns null when header is missing', () => {
+    const raw = {
+      type: 'alert',
+      id: 'alert-123',
+      attributes: {
+        effect: 'DELAY', cause: 'MAINTENANCE', header: null,
+        severity: 3, lifecycle: 'ONGOING', active_period: [],
+        informed_entity: [], updated_at: '2026-04-06T08:00:00-04:00',
+      },
+      relationships: {},
+    };
+    expect(parseAlert(raw)).toBeNull();
   });
 });
 
@@ -174,6 +262,7 @@ describe('parseFacility', () => {
       },
     };
     const facility = parseFacility(raw);
+    expect(facility).not.toBeNull();
     expect(facility).toEqual({
       id: 'facility-elevator-123',
       longName: 'Park Street Elevator 823', shortName: 'Elevator 823',

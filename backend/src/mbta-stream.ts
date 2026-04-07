@@ -58,14 +58,14 @@ export class MbtaStream {
 
   private attachHandlers<T>(
     es: EventSource, label: string,
-    parse: (resource: any) => T,
+    parse: (resource: any) => T | null,
     emit: (event: StreamEvent<T>) => void,
   ): void {
     es.addEventListener('reset', (e: MessageEvent) => {
       try {
         const json = JSON.parse(e.data);
         const items = Array.isArray(json) ? json : json.data ?? [json];
-        const parsed = (Array.isArray(items) ? items : [items]).map(parse);
+        const parsed = (Array.isArray(items) ? items : [items]).map(parse).filter((x): x is T => x !== null);
         emit({ type: 'reset', data: parsed });
       } catch (err) {
         this.options.onError(label, err);
@@ -76,7 +76,10 @@ export class MbtaStream {
       try {
         const json = JSON.parse(e.data);
         const resource = json.data ?? json;
-        emit({ type: 'add', data: parse(resource) });
+        const result = parse(resource);
+        if (result !== null) {
+          emit({ type: 'add', data: result });
+        }
       } catch (err) {
         this.options.onError(label, err);
       }
@@ -86,7 +89,10 @@ export class MbtaStream {
       try {
         const json = JSON.parse(e.data);
         const resource = json.data ?? json;
-        emit({ type: 'update', data: parse(resource) });
+        const result = parse(resource);
+        if (result !== null) {
+          emit({ type: 'update', data: result });
+        }
       } catch (err) {
         this.options.onError(label, err);
       }
