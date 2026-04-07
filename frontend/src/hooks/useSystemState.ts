@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useWebSocket } from './useWebSocket';
 import type { Vehicle, Prediction, Alert, FacilityWithStatus, Weather, WsMessage, SystemSnapshot } from '../types';
 
-const WS_URL = `ws://${window.location.hostname}:3001/ws`;
+const WS_URL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`;
 
 export function useSystemState() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
