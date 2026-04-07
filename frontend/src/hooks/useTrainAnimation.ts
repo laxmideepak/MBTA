@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { PathLayer, ScatterplotLayer } from '@deck.gl/layers';
+import { ScatterplotLayer } from '@deck.gl/layers';
 import { findNearestPointIndex } from '../utils/snap-to-route';
 import { getRouteColor } from '../utils/mbta-colors';
 import type { Vehicle } from '../types';
@@ -21,8 +21,6 @@ export interface TrainState {
   lastTargetTime: number;    // when that previous GPS update arrived
 }
 
-// Trail length (number of route points behind the train head)
-const TRAIL_LENGTH = 40;
 // When lerping to catch up to a new target, how fast (0-1 per frame)
 const CATCHUP_SPEED = 0.06;
 // Minimum speed (indices per ms) — prevents total standstill for in-transit trains
@@ -156,27 +154,12 @@ export function useTrainAnimation(
     advanceTrains();
 
     const states = trainStatesRef.current;
-    const trailData: any[] = [];
     const dotData: any[] = [];
 
     for (const [, state] of states) {
       const coords = state.routeCoords;
-      const clampedHead = Math.max(0, Math.min(coords.length - 1, Math.round(state.currentIdx)));
       const interpPos = computeInterpolatedPosition(state);
       const progress = Math.round((state.currentIdx / Math.max(1, coords.length - 1)) * 100);
-
-      // Trail
-      const trailStart = Math.max(0, clampedHead - TRAIL_LENGTH);
-      const trail = coords.slice(trailStart, clampedHead + 1);
-      if (trail.length > 0) trail.push(interpPos);
-      if (trail.length >= 2) {
-        trailData.push({
-          vehicleId: state.vehicleId, routeId: state.routeId,
-          directionId: state.directionId, stopId: state.stopId,
-          label: state.label, currentStatus: state.currentStatus,
-          trail, progress,
-        });
-      }
 
       dotData.push({
         vehicleId: state.vehicleId, routeId: state.routeId,
@@ -186,32 +169,16 @@ export function useTrainAnimation(
       });
     }
 
-    // Bright trail
-    const trailLayer = new PathLayer({
-      id: 'train-trails',
-      data: trailData,
-      getPath: (d: any) => d.trail,
-      getColor: (d: any) => [...getRouteColor(d.routeId), 255],
-      getWidth: 8,
-      widthUnits: 'pixels',
-      widthMinPixels: 5,
-      widthMaxPixels: 14,
-      capRounded: true,
-      jointRounded: true,
-      pickable: true,
-      onHover,
-    } as any);
-
     // Glow halo
     const glowLayer = new ScatterplotLayer({
       id: 'train-glow',
       data: dotData,
       getPosition: (d: any) => d.position,
       getFillColor: (d: any) => [...getRouteColor(d.routeId), 60],
-      getRadius: 18,
+      getRadius: 24,
       radiusUnits: 'pixels',
-      radiusMinPixels: 12,
-      radiusMaxPixels: 30,
+      radiusMinPixels: 16,
+      radiusMaxPixels: 40,
       stroked: false,
       filled: true,
       pickable: false,
@@ -224,17 +191,17 @@ export function useTrainAnimation(
       getPosition: (d: any) => d.position,
       getFillColor: (d: any) => [...getRouteColor(d.routeId), 255],
       getLineColor: [255, 255, 255, 255],
-      getRadius: 8,
+      getRadius: 10,
       radiusUnits: 'pixels',
-      radiusMinPixels: 6,
-      radiusMaxPixels: 14,
+      radiusMinPixels: 8,
+      radiusMaxPixels: 18,
       stroked: true,
       lineWidthMinPixels: 3,
       pickable: true,
       onHover,
     } as any);
 
-    return [trailLayer, glowLayer, dotLayer];
+    return [glowLayer, dotLayer];
   }
 
   return { trainStatesRef, getTrainLayers };

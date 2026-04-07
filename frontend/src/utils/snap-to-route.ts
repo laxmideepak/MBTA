@@ -11,8 +11,3 @@ export function findNearestPointIndex(lng: number, lat: number, routeCoords: [nu
   }
   return minIdx;
 }
-
-export function snapToRoute(lng: number, lat: number, routeCoords: [number, number][]): [number, number] {
-  const idx = findNearestPointIndex(lng, lat, routeCoords);
-  return routeCoords[idx];
-}
