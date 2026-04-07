@@ -30,6 +30,12 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
     routeId: string; directionId: number; stopId: string; progress: number;
   } | null>(null);
 
+  const [selectedStation, setSelectedStation] = useState<{ stop: Stop; x: number; y: number } | null>(null);
+
+  const handleStationClick = useCallback((stop: Stop, x: number, y: number) => {
+    setSelectedStation({ stop, x, y });
+  }, []);
+
   const { routeShapes, stops } = useRouteData();
 
   const brokenStopIds = useMemo(() => {
@@ -41,7 +47,7 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
   }, [facilities]);
 
   const { getTrainLayers } = useTrainAnimation(vehicles, routeShapes);
-  const staticLayersRef = useMapLayers(routeShapes, stops, accessibilityOn, brokenStopIds);
+  const staticLayersRef = useMapLayers(routeShapes, stops, accessibilityOn, brokenStopIds, handleStationClick);
 
   // Initialize map once
   useEffect(() => {
@@ -98,6 +104,15 @@ export function LiveMap({ vehicles, predictions, alerts, facilities, accessibili
           stopId={hoverInfo.stopId}
           predictions={predictions[hoverInfo.stopId] ?? []}
           progress={hoverInfo.progress}
+        />
+      )}
+      {selectedStation && (
+        <StationPopup
+          stop={selectedStation.stop}
+          predictions={predictions[selectedStation.stop.id] ?? []}
+          x={selectedStation.x}
+          y={selectedStation.y}
+          onClose={() => setSelectedStation(null)}
         />
       )}
     </div>

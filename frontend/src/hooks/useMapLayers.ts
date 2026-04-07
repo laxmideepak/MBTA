@@ -8,6 +8,7 @@ export function useMapLayers(
   stops: Stop[],
   accessibilityOn: boolean,
   brokenStopIds: Set<string>,
+  onStationClick?: (stop: Stop, x: number, y: number) => void,
 ) {
   const staticLayersRef = useRef<any[]>([]);
 
@@ -55,10 +56,13 @@ export function useMapLayers(
       radiusMinPixels: 2,
       radiusMaxPixels: 14,
       pickable: true,
+      onClick: ({ object, x, y }: any) => {
+        if (object && onStationClick) onStationClick(object, x, y);
+      },
     } as any);
 
     staticLayersRef.current = [routeLayer, stationLayer];
-  }, [routeShapes, stops, accessibilityOn, brokenStopIds]);
+  }, [routeShapes, stops, accessibilityOn, brokenStopIds, onStationClick]);
 
   return staticLayersRef;
 }
