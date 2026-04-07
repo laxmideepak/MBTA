@@ -32,7 +32,7 @@
   letter-spacing: 0.5px;
 }
 
-.board-search::placeholder { color: #555; }
+.board-search::placeholder { color: #767676; }
 .board-search:focus { border-color: #ffcc00; }
 
 .board-station-name {
@@ -100,12 +100,12 @@
   font-size: 15px;
 }
 
-.board-row-num { color: #666; font-size: 13px; text-align: right; }
+.board-row-num { color: #767676; font-size: 13px; text-align: right; }
 .board-row-dest { color: #ffcc00; letter-spacing: 0.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board-row-time { color: #ffcc00; font-weight: 700; text-align: right; min-width: 60px; }
 .board-row-time.due { color: #00ff00; }
 
-.board-empty { color: #555; font-size: 14px; padding: 16px 0; text-align: center; letter-spacing: 1px; }
+.board-empty { color: #767676; font-size: 14px; padding: 16px 0; text-align: center; letter-spacing: 1px; }
 
 .board-alert {
   padding: 10px 14px;
