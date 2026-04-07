@@ -29,6 +29,9 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', vehicles: stateManager.getState().vehicles.size });
 });
 
+let stopsCache: { data: any; expiry: number } | null = null;
+const STOPS_CACHE_TTL = 5 * 60 * 1000;
+
 let shapesCache: Awaited<ReturnType<typeof loadShapes>> | null = null;
 
 app.get('/api/shapes', async (_req, res) => {
@@ -44,12 +47,17 @@ app.get('/api/shapes', async (_req, res) => {
 
 app.get('/api/stops', async (_req, res) => {
   try {
+    if (stopsCache && Date.now() < stopsCache.expiry) {
+      return res.json(stopsCache.data);
+    }
     const response = await fetch(
       `https://api-v3.mbta.com/stops?filter[route_type]=0,1&api_key=${MBTA_API_KEY}`
     );
     const json = await response.json();
+    stopsCache = { data: json, expiry: Date.now() + STOPS_CACHE_TTL };
     res.json(json);
   } catch (err) {
+    console.error('[/api/stops] Error:', err);
     res.status(500).json({ error: 'Failed to fetch stops' });
   }
 });
