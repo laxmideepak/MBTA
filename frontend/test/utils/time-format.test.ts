@@ -19,6 +19,17 @@ describe('formatMinutesUntil', () => {
     const arrival = new Date('2026-04-06T12:00:00-04:00');
     expect(formatMinutesUntil(arrival.toISOString(), now)).toBe('Departed');
   });
+
+  it('returns "Arriving" for exactly 0 seconds away', () => {
+    const now = new Date('2026-04-07T12:00:00-04:00');
+    expect(formatMinutesUntil(now.toISOString(), now)).toBe('Arriving');
+  });
+
+  it('returns "1 min" for 90 seconds away', () => {
+    const now = new Date('2026-04-07T12:00:00-04:00');
+    const arrival = new Date('2026-04-07T12:01:30-04:00');
+    expect(formatMinutesUntil(arrival.toISOString(), now)).toBe('1 min');
+  });
 });
 
 describe('formatArrival', () => {
