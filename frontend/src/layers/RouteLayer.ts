@@ -1,4 +1,4 @@
-import { GeoJsonLayer } from '@deck.gl/layers';
+import { PathLayer } from '@deck.gl/layers';
 import { getRouteColor } from '../utils/mbta-colors';
 
 export interface RoutePathData {
@@ -6,31 +6,19 @@ export interface RoutePathData {
   path: [number, number][]; // [lng, lat][]
 }
 
-// Convert our route paths into GeoJSON LineString features for GeoJsonLayer
-// Matching London Underground: wide faint lines as background guides
+// Faint wide colored lines as background guides — matches London Underground style
 export function createRouteLayer(routes: RoutePathData[]) {
-  const geojson = {
-    type: 'FeatureCollection' as const,
-    features: routes.map((r) => ({
-      type: 'Feature' as const,
-      properties: { routeId: r.routeId },
-      geometry: {
-        type: 'LineString' as const,
-        coordinates: r.path,
-      },
-    })),
-  };
-
-  return new GeoJsonLayer({
+  return new PathLayer({
     id: 'route-paths',
-    data: geojson,
-    stroked: false,
-    filled: false,
-    lineWidthMinPixels: 12,
-    getLineColor: (f: any) => {
-      const color = getRouteColor(f.properties.routeId);
-      return [...color, 50]; // ~20% opacity — faint background
-    },
+    data: routes,
+    getPath: (d: RoutePathData) => d.path,
+    getColor: (d: RoutePathData) => [...getRouteColor(d.routeId), 50],
+    getWidth: 12,
+    widthUnits: 'pixels' as const,
+    widthMinPixels: 8,
+    widthMaxPixels: 16,
+    capRounded: true,
+    jointRounded: true,
     pickable: false,
   } as any);
 }

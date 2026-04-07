@@ -1,12 +1,10 @@
-import { TripsLayer } from '@deck.gl/geo-layers';
+import { PathLayer } from '@deck.gl/layers';
 import { getRouteColor } from '../utils/mbta-colors';
 
-export interface TripData {
+export interface TrainSegment {
   vehicleId: string;
   routeId: string;
-  path: [number, number][];     // full route coordinates [lng, lat]
-  timestamps: number[];          // index-based timestamps matching path
-  headTimestamp: number;         // current position along the path
+  segment: [number, number][];  // short polyline [lng, lat][]
   bearing: number;
   currentStatus: string;
   stopId: string;
@@ -15,22 +13,33 @@ export interface TripData {
   progress: number;
 }
 
-export function createTrainLayer(trips: TripData[], currentTime: number) {
-  return new TripsLayer({
+// Each train is a bright, shorter colored segment on top of the faint route.
+// This is how londonunderground.live renders trains — colored polyline segments
+// moving along the wider faint route lines.
+export function createTrainLayer(trains: TrainSegment[]) {
+  const valid = trains.filter((t) => t.segment.length >= 2);
+  return new PathLayer({
     id: 'train-trails',
-    data: trips,
-    getPath: (d: TripData) => d.path,
-    getTimestamps: (d: TripData) => d.timestamps,
-    getColor: (d: TripData) => {
+    data: valid,
+    getPath: (d: TrainSegment) => d.segment,
+    getColor: (d: TrainSegment) => {
       const base = getRouteColor(d.routeId);
-      // Slightly darker than the route line, like London Underground
-      return [Math.floor(base[0] * 0.85), Math.floor(base[1] * 0.85), Math.floor(base[2] * 0.85), 255];
+      return [
+        Math.min(255, Math.floor(base[0] * 1.1)),
+        Math.min(255, Math.floor(base[1] * 1.1)),
+        Math.min(255, Math.floor(base[2] * 1.1)),
+        255,
+      ];
     },
-    currentTime,
-    trailLength: 25,
-    widthMinPixels: 5,
+    getWidth: 6,
+    widthUnits: 'pixels' as const,
+    widthMinPixels: 4,
+    widthMaxPixels: 10,
     capRounded: true,
     jointRounded: true,
     pickable: true,
+    transitions: {
+      getPath: { duration: 3000, type: 'interpolation' },
+    },
   } as any);
 }
