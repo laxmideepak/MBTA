@@ -33,8 +33,8 @@ export function useMapLayers(
       pickable: false,
       stroked: false,
       filled: false,
-      lineWidthMinPixels: 10,
-      getLineColor: (f: any) => [...getRouteColor(f.properties.routeId), 70],
+      lineWidthMinPixels: 4,
+      getLineColor: (f: any) => [...getRouteColor(f.properties.routeId), 40],
       getLineWidth: 1,
       parameters: { depthTest: false, depthWrite: false },
     } as any);
@@ -45,17 +45,17 @@ export function useMapLayers(
       getPosition: (d: Stop) => [d.longitude, d.latitude, 0],
       getFillColor: (d: Stop) => {
         if (accessibilityOn && brokenStopIds.has(d.id)) return [244, 67, 54, 200];
-        return [255, 255, 255, 140];
+        return [255, 255, 255, 100];
       },
-      getLineColor: [0, 0, 0, 120],
-      getLineWidth: 3,
+      getLineColor: [0, 0, 0, 80],
+      getLineWidth: 2,
       lineWidthUnits: 'meters' as const,
       stroked: true,
       filled: true,
       radiusUnits: 'meters' as const,
-      getRadius: 40,
+      getRadius: 30,
       radiusMinPixels: 2,
-      radiusMaxPixels: 14,
+      radiusMaxPixels: 8,
       pickable: true,
       onClick: ({ object, x, y }: any) => {
         if (object && onStationClick) onStationClick(object, x, y);
