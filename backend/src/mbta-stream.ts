@@ -43,7 +43,7 @@ export class MbtaStream {
   }
 
   private connectPredictions(): void {
-    const url = `https://api-v3.mbta.com/predictions?filter[route_type]=0,1&api_key=${this.options.apiKey}`;
+    const url = `https://api-v3.mbta.com/predictions?filter[route]=Red,Orange,Blue,Green-B,Green-C,Green-D,Green-E,Mattapan&api_key=${this.options.apiKey}`;
     const es = new EventSource(url, { headers: { Accept: 'text/event-stream' } });
     this.attachHandlers(es, 'predictions', (r) => parsePrediction(r), this.options.onPredictionEvent);
     this.sources.push(es);
