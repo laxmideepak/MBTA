@@ -76,8 +76,15 @@ export function DepartureBoard({ predictions, alerts, facilities }: DepartureBoa
       .slice(0, 10);
   }, [searchText, stops]);
 
-  const selectedStop = stops.find((s) => s.id === selectedStopId) ?? null;
-  const stopPredictions = predictions[selectedStopId] ?? [];
+  const selectedStop = useMemo(
+    () => stops.find((s) => s.id === selectedStopId) ?? null,
+    [stops, selectedStopId],
+  );
+
+  const stopPredictions = useMemo(
+    () => predictions[selectedStopId] ?? [],
+    [predictions, selectedStopId],
+  );
 
   // Group by route
   const predsByRoute = useMemo(() => {
@@ -96,11 +103,13 @@ export function DepartureBoard({ predictions, alerts, facilities }: DepartureBoa
   }, [stopPredictions]);
 
   // Relevant alerts
-  const relevantAlerts = alerts.filter((a) =>
-    a.informedEntities.some((e) => e.stopId === selectedStopId || !e.stopId)
+  const relevantAlerts = useMemo(
+    () => alerts.filter((a) => a.informedEntities.some((e) => e.stopId === selectedStopId || !e.stopId)),
+    [alerts, selectedStopId],
   );
-  const brokenFacilities = facilities.filter(
-    (f) => f.facility.stopId === selectedStopId && f.status?.status === 'OUT_OF_ORDER'
+  const brokenFacilities = useMemo(
+    () => facilities.filter((f) => f.facility.stopId === selectedStopId && f.status?.status === 'OUT_OF_ORDER'),
+    [facilities, selectedStopId],
   );
 
   return (
