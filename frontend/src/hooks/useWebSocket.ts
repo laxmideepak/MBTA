@@ -4,28 +4,34 @@ import type { WsMessage } from '../types';
 interface UseWebSocketOptions {
   url: string;
   onMessage: (message: WsMessage) => void;
-  reconnectInterval?: number;
 }
 
-export function useWebSocket({ url, onMessage, reconnectInterval = 3000 }: UseWebSocketOptions) {
+export function useWebSocket({ url, onMessage }: UseWebSocketOptions) {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const onMessageRef = useRef(onMessage);
   onMessageRef.current = onMessage;
+  const attemptRef = useRef(0);
 
   const connect = useCallback(() => {
     const ws = new WebSocket(url);
-    ws.onopen = () => setConnected(true);
+    ws.onopen = () => { setConnected(true); attemptRef.current = 0; };
     ws.onmessage = (event) => {
       try { const msg: WsMessage = JSON.parse(event.data); onMessageRef.current(msg); } catch {}
     };
     ws.onclose = () => {
       setConnected(false);
-      setTimeout(() => { if (wsRef.current === ws) connect(); }, reconnectInterval);
+      const backoff = Math.min(1000 * Math.pow(2, attemptRef.current), 30000);
+      attemptRef.current++;
+      setTimeout(() => {
+        if (wsRef.current === ws) {
+          connect();
+        }
+      }, backoff);
     };
     ws.onerror = () => ws.close();
     wsRef.current = ws;
-  }, [url, reconnectInterval]);
+  }, [url]);
 
   useEffect(() => {
     connect();
