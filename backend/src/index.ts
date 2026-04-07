@@ -25,8 +25,15 @@ const server = createServer(app);
 const stateManager = new StateManager();
 const wsBroadcaster = new WsBroadcaster(server, stateManager);
 
+const startTime = Date.now();
+
 app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', vehicles: stateManager.getState().vehicles.size });
+  res.json({
+    status: 'ok',
+    uptime: Math.floor((Date.now() - startTime) / 1000),
+    vehicles: stateManager.getState().vehicles.size,
+    alerts: stateManager.getState().alerts.length,
+  });
 });
 
 let stopsCache: { data: any; expiry: number } | null = null;
