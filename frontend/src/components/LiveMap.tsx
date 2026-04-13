@@ -11,7 +11,9 @@ import { useKeyboardMapNav } from '../hooks/useKeyboardMapNav';
 import type { Vehicle, Prediction, Alert, FacilityWithStatus, Stop } from '../types';
 
 const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_API_KEY ?? '';
-const MAP_STYLE = `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${MAPTILER_KEY}`;
+const MAP_STYLE = MAPTILER_KEY
+  ? `https://api.maptiler.com/maps/streets-v2-dark/style.json?key=${MAPTILER_KEY}`
+  : 'https://demotiles.maplibre.org/style.json';
 
 interface LiveMapProps {
   vehicles: Vehicle[];

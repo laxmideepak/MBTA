@@ -1,3 +1,4 @@
+import { withMbtaKey } from './mbta-api-url.js';
 import { parseFacility } from './mbta-parser.js';
 import type { Facility, FacilityStatus, MbtaResource } from './types.js';
 
@@ -47,7 +48,10 @@ export class FacilityPoller {
   private async poll(): Promise<void> {
     try {
       const response = await fetch(
-        `https://api-v3.mbta.com/facilities?filter[type]=ELEVATOR,ESCALATOR&api_key=${this.apiKey}`
+        withMbtaKey(
+          'https://api-v3.mbta.com/facilities?filter[type]=ELEVATOR,ESCALATOR',
+          this.apiKey,
+        ),
       );
       if (!response.ok) {
         this.onError(new Error(`Facilities API returned ${response.status}`));

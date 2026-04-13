@@ -9,6 +9,7 @@ import { MbtaStream } from './mbta-stream.js';
 import { WsBroadcaster } from './ws-server.js';
 import { FacilityPoller } from './facility-poller.js';
 import { WeatherPoller } from './weather-poller.js';
+import { withMbtaKey } from './mbta-api-url.js';
 import { loadShapes } from './gtfs-loader.js';
 import type { Vehicle, Prediction, Alert } from './types.js';
 
@@ -18,8 +19,9 @@ const PORT = parseInt(process.env.PORT ?? '3001', 10);
 const MBTA_API_KEY = process.env.MBTA_API_KEY ?? '';
 
 if (!MBTA_API_KEY) {
-  console.error('MBTA_API_KEY is required. Get one at https://api-v3.mbta.com/');
-  process.exit(1);
+  console.warn(
+    'MBTA_API_KEY is not set; using unauthenticated API access (lower rate limits). Get a key at https://api-v3.mbta.com/',
+  );
 }
 
 const app = express();
@@ -82,7 +84,7 @@ app.get('/api/stops', async (_req, res) => {
       return res.json(stopsCache.data);
     }
     const response = await fetch(
-      `https://api-v3.mbta.com/stops?filter[route_type]=0,1&api_key=${MBTA_API_KEY}`
+      withMbtaKey('https://api-v3.mbta.com/stops?filter[route_type]=0,1', MBTA_API_KEY),
     );
     const json = await response.json();
     stopsCache = { data: json, expiry: Date.now() + STOPS_CACHE_TTL };

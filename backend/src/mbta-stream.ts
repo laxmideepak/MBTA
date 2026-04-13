@@ -1,4 +1,5 @@
 import EventSource from 'eventsource';
+import { withMbtaKey } from './mbta-api-url.js';
 import { parseVehicle, parsePrediction, parseAlert } from './mbta-parser.js';
 import type { Vehicle, Prediction, Alert } from './types.js';
 
@@ -36,21 +37,30 @@ export class MbtaStream {
   }
 
   private connectVehicles(): void {
-    const url = `https://api-v3.mbta.com/vehicles?filter[route_type]=0,1&api_key=${this.options.apiKey}`;
+    const url = withMbtaKey(
+      'https://api-v3.mbta.com/vehicles?filter[route_type]=0,1',
+      this.options.apiKey,
+    );
     const es = new EventSource(url, { headers: { Accept: 'text/event-stream' } });
     this.attachHandlers(es, 'vehicles', (r) => parseVehicle(r), this.options.onVehicleEvent);
     this.sources.push(es);
   }
 
   private connectPredictions(): void {
-    const url = `https://api-v3.mbta.com/predictions?filter[route]=Red,Orange,Blue,Green-B,Green-C,Green-D,Green-E,Mattapan&api_key=${this.options.apiKey}`;
+    const url = withMbtaKey(
+      'https://api-v3.mbta.com/predictions?filter[route]=Red,Orange,Blue,Green-B,Green-C,Green-D,Green-E,Mattapan',
+      this.options.apiKey,
+    );
     const es = new EventSource(url, { headers: { Accept: 'text/event-stream' } });
     this.attachHandlers(es, 'predictions', (r) => parsePrediction(r), this.options.onPredictionEvent);
     this.sources.push(es);
   }
 
   private connectAlerts(): void {
-    const url = `https://api-v3.mbta.com/alerts?filter[route_type]=0,1&api_key=${this.options.apiKey}`;
+    const url = withMbtaKey(
+      'https://api-v3.mbta.com/alerts?filter[route_type]=0,1',
+      this.options.apiKey,
+    );
     const es = new EventSource(url, { headers: { Accept: 'text/event-stream' } });
     this.attachHandlers(es, 'alerts', (r) => parseAlert(r), this.options.onAlertEvent);
     this.sources.push(es);
