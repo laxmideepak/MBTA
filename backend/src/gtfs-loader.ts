@@ -47,19 +47,33 @@ export async function loadShapes(apiKey: string): Promise<Map<string, RouteShape
 
   const results = await Promise.all(
     routes.map(async (routeId) => {
-      const url = withMbtaKey(`https://api-v3.mbta.com/shapes?filter[route]=${routeId}`, apiKey);
-      const response = await fetch(url);
-      if (!response.ok) {
-        console.error(`Failed to fetch shapes for ${routeId}: ${response.status}`);
+      try {
+        const url = withMbtaKey(`https://api-v3.mbta.com/shapes?filter[route]=${routeId}`, apiKey);
+        const response = await fetch(url);
+        if (!response.ok) {
+          console.error(`Failed to fetch shapes for ${routeId}: ${response.status}`);
+          return { routeId, shapes: [] as RouteShape[] };
+        }
+        const json = await response.json();
+        const shapes: RouteShape[] = [];
+        for (const resource of (json.data || []) as any[]) {
+          try {
+            const polyline = resource.attributes?.polyline;
+            if (typeof polyline !== 'string' || polyline.length === 0) continue;
+            shapes.push({
+              shapeId: resource.id,
+              routeId,
+              coordinates: decodePolyline(polyline),
+            });
+          } catch (err) {
+            console.error(`Failed to decode polyline for ${routeId} shape ${resource?.id}:`, err);
+          }
+        }
+        return { routeId, shapes };
+      } catch (err) {
+        console.error(`Failed to load shapes for ${routeId}:`, err);
         return { routeId, shapes: [] as RouteShape[] };
       }
-      const json = await response.json();
-      const shapes: RouteShape[] = (json.data || []).map((resource: any) => ({
-        shapeId: resource.id,
-        routeId,
-        coordinates: decodePolyline(resource.attributes.polyline as string),
-      }));
-      return { routeId, shapes };
     }),
   );
 

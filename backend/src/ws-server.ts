@@ -34,7 +34,13 @@ export class WsBroadcaster {
         data: snapshot,
         timestamp: Date.now(),
       };
-      ws.send(JSON.stringify(msg));
+      try {
+        ws.send(JSON.stringify(msg), (err) => {
+          if (err) console.error('[ws] initial snapshot send failed:', err);
+        });
+      } catch (err) {
+        console.error('[ws] initial snapshot send threw:', err);
+      }
     });
 
     this.pingIntervalId = setInterval(() => {

@@ -73,16 +73,30 @@ let stopsCache: { data: any; expiry: number } | null = null;
 const STOPS_CACHE_TTL = 5 * 60 * 1000;
 
 let shapesCache: Awaited<ReturnType<typeof loadShapes>> | null = null;
+// In-flight dedupe: concurrent requests during a cache miss share the same
+// pending promise instead of all racing to the MBTA API.
+let shapesInflight: Promise<Awaited<ReturnType<typeof loadShapes>>> | null = null;
+let stopsInflight: Promise<any> | null = null;
 
 app.get('/api/shapes', async (_req, res) => {
-  if (!shapesCache) {
-    shapesCache = await loadShapes(MBTA_API_KEY);
+  try {
+    if (!shapesCache) {
+      if (!shapesInflight) {
+        shapesInflight = loadShapes(MBTA_API_KEY).finally(() => {
+          shapesInflight = null;
+        });
+      }
+      shapesCache = await shapesInflight;
+    }
+    const result: Record<string, { shapeId: string; coordinates: [number, number][] }[]> = {};
+    for (const [routeId, shapes] of shapesCache) {
+      result[routeId] = shapes.map((s) => ({ shapeId: s.shapeId, coordinates: s.coordinates }));
+    }
+    res.json(result);
+  } catch (err) {
+    console.error('[/api/shapes] Error:', err);
+    res.status(500).json({ error: 'Failed to fetch shapes' });
   }
-  const result: Record<string, { shapeId: string; coordinates: [number, number][] }[]> = {};
-  for (const [routeId, shapes] of shapesCache) {
-    result[routeId] = shapes.map((s) => ({ shapeId: s.shapeId, coordinates: s.coordinates }));
-  }
-  res.json(result);
 });
 
 app.get('/api/stops', async (_req, res) => {
@@ -90,11 +104,22 @@ app.get('/api/stops', async (_req, res) => {
     if (stopsCache && Date.now() < stopsCache.expiry) {
       return res.json(stopsCache.data);
     }
-    const response = await fetch(
-      withMbtaKey('https://api-v3.mbta.com/stops?filter[route_type]=0,1', MBTA_API_KEY),
-    );
-    const json = await response.json();
-    stopsCache = { data: json, expiry: Date.now() + STOPS_CACHE_TTL };
+    if (!stopsInflight) {
+      stopsInflight = (async () => {
+        const response = await fetch(
+          withMbtaKey('https://api-v3.mbta.com/stops?filter[route_type]=0,1', MBTA_API_KEY),
+        );
+        if (!response.ok) {
+          throw new Error(`MBTA stops ${response.status} ${response.statusText}`);
+        }
+        const json = await response.json();
+        stopsCache = { data: json, expiry: Date.now() + STOPS_CACHE_TTL };
+        return json;
+      })().finally(() => {
+        stopsInflight = null;
+      });
+    }
+    const json = await stopsInflight;
     res.json(json);
   } catch (err) {
     console.error('[/api/stops] Error:', err);
@@ -175,9 +200,18 @@ app.get('/api/schedules', async (req, res) => {
     const body = { schedules: parsed };
     schedulesCache.set(key, { data: body, expiry: now + SCHEDULES_CACHE_TTL });
     if (schedulesCache.size > SCHEDULES_CACHE_MAX) {
+      // First pass: drop anything already expired.
       for (const [k, v] of schedulesCache) {
         if (now > v.expiry) schedulesCache.delete(k);
         if (schedulesCache.size <= SCHEDULES_CACHE_MAX / 2) break;
+      }
+      // Still too big? Fall back to LRU-by-insertion-order (Map preserves it)
+      // so the cache stays bounded under sustained high-cardinality traffic.
+      if (schedulesCache.size > SCHEDULES_CACHE_MAX) {
+        for (const k of schedulesCache.keys()) {
+          schedulesCache.delete(k);
+          if (schedulesCache.size <= SCHEDULES_CACHE_MAX / 2) break;
+        }
       }
     }
     res.json(body);

@@ -51,9 +51,23 @@ export function useRouteData() {
   const [stops, setStops] = useState<Stop[]>([]);
 
   useEffect(() => {
-    Promise.all([fetch('/api/shapes'), fetch('/api/stops')])
-      .then(async ([shapesRes, stopsRes]) => {
+    const controller = new AbortController();
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const [shapesRes, stopsRes] = await Promise.all([
+          fetch('/api/shapes', { signal: controller.signal }),
+          fetch('/api/stops', { signal: controller.signal }),
+        ]);
+        if (cancelled) return;
+        if (!shapesRes.ok || !stopsRes.ok) {
+          throw new Error(
+            `route data fetch failed: shapes=${shapesRes.status} stops=${stopsRes.status}`,
+          );
+        }
         const shapesJson = (await shapesRes.json()) as Record<string, ShapeDto[]>;
+        if (cancelled) return;
         const shapesMap: RouteShapesMap = new Map();
         for (const [routeId, shapes] of Object.entries(shapesJson)) {
           shapesMap.set(
@@ -65,9 +79,9 @@ export function useRouteData() {
             })),
           );
         }
-        setRouteShapes(shapesMap);
 
         const stopsJson = (await stopsRes.json()) as { data: StopDto[] };
+        if (cancelled) return;
         const parsedStops: Stop[] = stopsJson.data.map((s) => ({
           id: s.id,
           name: s.attributes.name,
@@ -77,12 +91,20 @@ export function useRouteData() {
           routeIds: [],
         }));
         const enrichedStops = assignStopRoutes(parsedStops, shapesMap);
+        if (cancelled) return;
+        setRouteShapes(shapesMap);
         setStops(enrichedStops);
         setStopNames(enrichedStops);
-      })
-      .catch((err) => {
+      } catch (err) {
+        if (cancelled || (err as { name?: string })?.name === 'AbortError') return;
         console.error(err);
-      });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, []);
 
   return { routeShapes, stops };
