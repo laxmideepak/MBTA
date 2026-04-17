@@ -127,6 +127,7 @@ export type WsMessageType =
   | 'vehicles-update'
   | 'predictions-update'
   | 'alerts-update'
+  | 'delta'
   | 'heartbeat';
 
 export interface WsMessage {

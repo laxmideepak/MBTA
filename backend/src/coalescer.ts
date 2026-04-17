@@ -7,9 +7,7 @@ import type { Alert, Prediction, Vehicle } from './types.js';
  * HTTP, and lets the coalescer stay ignorant of the wire transport.
  */
 export interface BroadcasterLike {
-  broadcastVehicles(data: unknown): void;
-  broadcastPredictions(data: unknown): void;
-  broadcastAlerts(data: unknown): void;
+  broadcastDelta(data: unknown): void;
 }
 
 export interface CoalescerOptions {
@@ -31,9 +29,9 @@ export interface CoalescerOptions {
  * clients always observe the latest state; only the WebSocket delta chatter
  * is deferred.
  *
- * Day-1 wire format is preserved: reset/upsert/remove messages are emitted
- * per slice in the same legacy shapes the frontend already consumes, so this
- * change is reversible without touching the client.
+ * Day-7 wire format: the coalescer emits a single delta payload per flush so
+ * clients can apply all slices in one store update and avoid per-entity
+ * message storms.
  */
 export class Coalescer {
   private state: StateManager;
@@ -178,7 +176,7 @@ export class Coalescer {
   }
 
   /**
-   * Drain every dirty slice in one pass, emitting legacy Day-1 wire messages.
+   * Drain every dirty slice in one pass, emitting a single delta message.
    * Idempotent and safe to call directly (e.g. from tests or shutdown): when
    * nothing is pending this is a cheap no-op and does not update the
    * last-flush timestamp, so it never disturbs the cadence.
@@ -193,45 +191,36 @@ export class Coalescer {
 
     const snapshot = this.state.getSnapshot();
 
-    if (this.vehiclesResetPending) {
-      this.broadcaster.broadcastVehicles({ type: 'reset', vehicles: snapshot.vehicles });
-      this.vehiclesResetPending = false;
-    } else {
-      for (const v of this.vehiclesPendingUpserts.values()) {
-        this.broadcaster.broadcastVehicles({ type: 'upsert', vehicle: v });
-      }
-      for (const id of this.vehiclesPendingRemovals) {
-        this.broadcaster.broadcastVehicles({ type: 'remove', id });
-      }
-    }
+    const vehicles = this.vehiclesResetPending
+      ? { reset: snapshot.vehicles }
+      : {
+          updated: Array.from(this.vehiclesPendingUpserts.values()),
+          removed: Array.from(this.vehiclesPendingRemovals),
+        };
+
+    const predictions = this.predictionsResetPending
+      ? { reset: snapshot.predictions }
+      : {
+          updated: Array.from(this.predictionsPendingUpserts.values()),
+          removed: Array.from(this.predictionsPendingRemovals),
+        };
+
+    const alerts = this.alertsResetPending
+      ? { reset: snapshot.alerts }
+      : {
+          updated: Array.from(this.alertsPendingUpserts.values()),
+          removed: Array.from(this.alertsPendingRemovals),
+        };
+
+    this.broadcaster.broadcastDelta({ vehicles, predictions, alerts });
+
+    this.vehiclesResetPending = false;
     this.vehiclesPendingUpserts.clear();
     this.vehiclesPendingRemovals.clear();
-
-    if (this.predictionsResetPending) {
-      this.broadcaster.broadcastPredictions({ type: 'reset', predictions: snapshot.predictions });
-      this.predictionsResetPending = false;
-    } else {
-      for (const p of this.predictionsPendingUpserts.values()) {
-        this.broadcaster.broadcastPredictions({ type: 'upsert', prediction: p });
-      }
-      for (const id of this.predictionsPendingRemovals) {
-        this.broadcaster.broadcastPredictions({ type: 'remove', id });
-      }
-    }
+    this.predictionsResetPending = false;
     this.predictionsPendingUpserts.clear();
     this.predictionsPendingRemovals.clear();
-
-    if (this.alertsResetPending) {
-      this.broadcaster.broadcastAlerts({ type: 'reset', alerts: snapshot.alerts });
-      this.alertsResetPending = false;
-    } else {
-      for (const a of this.alertsPendingUpserts.values()) {
-        this.broadcaster.broadcastAlerts({ type: 'upsert', alert: a });
-      }
-      for (const id of this.alertsPendingRemovals) {
-        this.broadcaster.broadcastAlerts({ type: 'remove', id });
-      }
-    }
+    this.alertsResetPending = false;
     this.alertsPendingUpserts.clear();
     this.alertsPendingRemovals.clear();
 

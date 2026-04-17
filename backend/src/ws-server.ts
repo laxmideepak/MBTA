@@ -79,6 +79,10 @@ export class WsBroadcaster {
     this.broadcast({ type: 'alerts-update', data: alerts, timestamp: Date.now() });
   }
 
+  broadcastDelta(delta: unknown): void {
+    this.broadcast({ type: 'delta', data: delta, timestamp: Date.now() });
+  }
+
   close(): void {
     if (this.pingIntervalId) {
       clearInterval(this.pingIntervalId);

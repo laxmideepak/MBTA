@@ -100,48 +100,29 @@ class FakeTimer {
   }
 }
 
-type VehiclesWire =
-  | { type: 'reset'; vehicles: Vehicle[] }
-  | { type: 'upsert'; vehicle: Vehicle }
-  | { type: 'remove'; id: string };
-
-type PredictionsWire =
-  | { type: 'reset'; predictions: Record<string, Prediction[]> }
-  | { type: 'upsert'; prediction: Prediction }
-  | { type: 'remove'; id: string };
-
-type AlertsWire =
-  | { type: 'reset'; alerts: Alert[] }
-  | { type: 'upsert'; alert: Alert }
-  | { type: 'remove'; id: string };
+type DeltaPayload = {
+  vehicles: { reset?: Vehicle[]; updated?: Vehicle[]; removed?: string[] };
+  predictions: { reset?: Record<string, Prediction[]>; updated?: Prediction[]; removed?: string[] };
+  alerts: { reset?: Alert[]; updated?: Alert[]; removed?: string[] };
+};
 
 describe('Coalescer', () => {
   let state: StateManager;
   let clock: FakeTimer;
-  let vehicleCalls: VehiclesWire[];
-  let predictionCalls: PredictionsWire[];
-  let alertCalls: AlertsWire[];
+  let deltaCalls: DeltaPayload[];
 
   beforeEach(() => {
     state = new StateManager();
     clock = new FakeTimer();
-    vehicleCalls = [];
-    predictionCalls = [];
-    alertCalls = [];
+    deltaCalls = [];
   });
 
   function makeCoalescer(): Coalescer {
     return new Coalescer(
       state,
       {
-        broadcastVehicles: vi.fn((data: unknown) => {
-          vehicleCalls.push(data as VehiclesWire);
-        }),
-        broadcastPredictions: vi.fn((data: unknown) => {
-          predictionCalls.push(data as PredictionsWire);
-        }),
-        broadcastAlerts: vi.fn((data: unknown) => {
-          alertCalls.push(data as AlertsWire);
+        broadcastDelta: vi.fn((data: unknown) => {
+          deltaCalls.push(data as DeltaPayload);
         }),
       },
       {
@@ -156,91 +137,88 @@ describe('Coalescer', () => {
   it('1. upsertVehicle does not call broadcaster synchronously', () => {
     const c = makeCoalescer();
     c.upsertVehicle(mkVehicle({ id: 'v1' }));
-    expect(vehicleCalls).toHaveLength(0);
+    expect(deltaCalls).toHaveLength(0);
   });
 
-  it('2. after advance(250), one broadcastVehicles upsert', () => {
+  it('2. after advance(250), one delta flush contains vehicle update', () => {
     const c = makeCoalescer();
     c.upsertVehicle(mkVehicle({ id: 'v1' }));
     clock.advance(250);
-    expect(vehicleCalls).toHaveLength(1);
-    expect(vehicleCalls[0]).toEqual({ type: 'upsert', vehicle: mkVehicle({ id: 'v1' }) });
+    expect(deltaCalls).toHaveLength(1);
+    expect(deltaCalls[0].vehicles.updated?.map((v) => v.id)).toEqual(['v1']);
   });
 
-  it('3. 50 sync upserts: setTimeoutFn called once; after advance(250), broadcastVehicles called 50 times all upsert', () => {
+  it('3. 50 sync upserts schedule once; after advance(250) delta has 50 updated', () => {
     const c = makeCoalescer();
     for (let i = 0; i < 50; i++) {
       c.upsertVehicle(mkVehicle({ id: `v${i}`, label: String(i) }));
     }
     expect(clock.scheduleCalls).toHaveLength(1);
     clock.advance(250);
-    expect(vehicleCalls).toHaveLength(50);
-    for (const msg of vehicleCalls) {
-      expect(msg.type).toBe('upsert');
-    }
+    expect(deltaCalls).toHaveLength(1);
+    expect(deltaCalls[0].vehicles.updated).toHaveLength(50);
   });
 
-  it('4. upsert vehicle+prediction+alert sync: advance(250) → each broadcast* called once', () => {
+  it('4. upsert vehicle+prediction+alert sync: advance(250) → one delta has all three slices', () => {
     const c = makeCoalescer();
     c.upsertVehicle(mkVehicle({ id: 'v1' }));
     c.upsertPrediction(mkPrediction({ id: 'p1' }));
     c.upsertAlert(mkAlert({ id: 'a1' }));
     clock.advance(250);
-    expect(vehicleCalls).toHaveLength(1);
-    expect(predictionCalls).toHaveLength(1);
-    expect(alertCalls).toHaveLength(1);
+    expect(deltaCalls).toHaveLength(1);
+    expect(deltaCalls[0].vehicles.updated).toHaveLength(1);
+    expect(deltaCalls[0].predictions.updated).toHaveLength(1);
+    expect(deltaCalls[0].alerts.updated).toHaveLength(1);
   });
 
   it('5. two flushes: second scheduled delay is 240', () => {
     const c = makeCoalescer();
     c.upsertVehicle(mkVehicle({ id: 'v1' }));
     clock.advance(250);
+
     clock.advance(10);
     c.upsertVehicle(mkVehicle({ id: 'v2' }));
     expect(clock.scheduleCalls[1]).toBe(240);
     clock.advance(240);
-    expect(vehicleCalls.length).toBeGreaterThanOrEqual(2);
+    expect(deltaCalls.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('6. manual flush() after scheduling: broadcaster called, no pending timers', () => {
+  it('6. manual flush() after scheduling: delta broadcast, no pending timers', () => {
     const c = makeCoalescer();
     c.upsertVehicle(mkVehicle({ id: 'v1' }));
     c.flush();
-    expect(vehicleCalls).toHaveLength(1);
+    expect(deltaCalls).toHaveLength(1);
     expect(clock.pendingCount()).toBe(0);
   });
 
   it('7. flush() on fresh coalescer: no broadcast', () => {
     const c = makeCoalescer();
     c.flush();
-    expect(vehicleCalls).toHaveLength(0);
-    expect(predictionCalls).toHaveLength(0);
-    expect(alertCalls).toHaveLength(0);
+    expect(deltaCalls).toHaveLength(0);
   });
 
-  it('8. vehicle LWW: three upserts same id different label → one upsert with last label', () => {
+  it('8. vehicle LWW: three upserts same id different label → one updated with last label', () => {
     const c = makeCoalescer();
     c.upsertVehicle(mkVehicle({ id: 'same', label: 'a' }));
     c.upsertVehicle(mkVehicle({ id: 'same', label: 'b' }));
     c.upsertVehicle(mkVehicle({ id: 'same', label: 'c' }));
     clock.advance(250);
-    expect(vehicleCalls).toHaveLength(1);
-    expect(vehicleCalls[0].type).toBe('upsert');
-    if (vehicleCalls[0].type === 'upsert') {
-      expect(vehicleCalls[0].vehicle.label).toBe('c');
-    }
+    expect(deltaCalls).toHaveLength(1);
+    expect(deltaCalls[0].vehicles.updated).toHaveLength(1);
+    expect(deltaCalls[0].vehicles.updated?.[0]?.label).toBe('c');
   });
 
-  it('9. upsert then remove same id → only one remove broadcast', () => {
+  it('9. upsert then remove same id → only removed contains id', () => {
     const c = makeCoalescer();
     c.upsertVehicle(mkVehicle({ id: 'x' }));
     c.removeVehicle('x');
     clock.advance(250);
-    expect(vehicleCalls).toHaveLength(1);
-    expect(vehicleCalls[0]).toEqual({ type: 'remove', id: 'x' });
+    expect(deltaCalls).toHaveLength(1);
+    expect(deltaCalls[0].vehicles.removed).toEqual(['x']);
+    expect(deltaCalls[0].vehicles.updated ?? []).toHaveLength(0);
   });
 
-  it('10. resetVehicles [v1], flush; remove v1 then upsert v1 → second flush only upsert', () => {
+  it('10. resetVehicles [v1], flush; remove v1 then upsert v1 → second flush only updated', () => {
     const v1 = mkVehicle({ id: 'v1' });
     const c = makeCoalescer();
     c.resetVehicles([v1]);
@@ -248,13 +226,12 @@ describe('Coalescer', () => {
     c.removeVehicle('v1');
     c.upsertVehicle(v1);
     clock.advance(250);
-    const upserts = vehicleCalls.filter((m) => m.type === 'upsert');
-    const removes = vehicleCalls.filter((m) => m.type === 'remove');
-    expect(upserts).toHaveLength(1);
-    expect(removes).toHaveLength(0);
+    expect(deltaCalls).toHaveLength(2);
+    expect(deltaCalls[1].vehicles.updated).toHaveLength(1);
+    expect(deltaCalls[1].vehicles.removed ?? []).toHaveLength(0);
   });
 
-  it('11. upsert+remove+resetVehicles([a,b]) before flush → only reset, no upsert/remove', () => {
+  it('11. upsert+remove+resetVehicles before flush → vehicles.reset wins', () => {
     const a = mkVehicle({ id: 'a' });
     const b = mkVehicle({ id: 'b' });
     const c = makeCoalescer();
@@ -262,11 +239,8 @@ describe('Coalescer', () => {
     c.removeVehicle('z');
     c.resetVehicles([a, b]);
     clock.advance(250);
-    expect(vehicleCalls).toHaveLength(1);
-    expect(vehicleCalls[0].type).toBe('reset');
-    if (vehicleCalls[0].type === 'reset') {
-      expect(vehicleCalls[0].vehicles).toHaveLength(2);
-    }
+    expect(deltaCalls).toHaveLength(1);
+    expect(deltaCalls[0].vehicles.reset?.map((v) => v.id)).toEqual(['a', 'b']);
   });
 
   it('12. reset then upsert same window → reset snapshot includes upserted fields', () => {
@@ -274,12 +248,8 @@ describe('Coalescer', () => {
     c.resetVehicles([mkVehicle({ id: 'base', label: 'old' })]);
     c.upsertVehicle(mkVehicle({ id: 'base', label: 'new' }));
     clock.advance(250);
-    expect(vehicleCalls).toHaveLength(1);
-    expect(vehicleCalls[0].type).toBe('reset');
-    if (vehicleCalls[0].type === 'reset') {
-      const v = vehicleCalls[0].vehicles.find((x) => x.id === 'base');
-      expect(v?.label).toBe('new');
-    }
+    const v = deltaCalls[0].vehicles.reset?.find((x) => x.id === 'base');
+    expect(v?.label).toBe('new');
   });
 
   it('13. reset then remove in same window → reset snapshot excludes removed id', () => {
@@ -289,11 +259,8 @@ describe('Coalescer', () => {
     c.resetVehicles([a, b]);
     c.removeVehicle('a');
     clock.advance(250);
-    expect(vehicleCalls[0].type).toBe('reset');
-    if (vehicleCalls[0].type === 'reset') {
-      const ids = new Set(vehicleCalls[0].vehicles.map((v) => v.id));
-      expect(ids).toEqual(new Set(['b']));
-    }
+    const ids = new Set(deltaCalls[0].vehicles.reset?.map((v) => v.id));
+    expect(ids).toEqual(new Set(['b']));
   });
 
   it('14. prediction LWW same id', () => {
@@ -301,26 +268,19 @@ describe('Coalescer', () => {
     c.upsertPrediction(mkPrediction({ id: 'p', arrivalTime: '2026-04-06T12:00:00-04:00' }));
     c.upsertPrediction(mkPrediction({ id: 'p', arrivalTime: '2026-04-06T13:00:00-04:00' }));
     clock.advance(250);
-    expect(predictionCalls).toHaveLength(1);
-    expect(predictionCalls[0].type).toBe('upsert');
-    if (predictionCalls[0].type === 'upsert') {
-      expect(predictionCalls[0].prediction.arrivalTime).toBe('2026-04-06T13:00:00-04:00');
-    }
+    expect(deltaCalls[0].predictions.updated).toHaveLength(1);
+    expect(deltaCalls[0].predictions.updated?.[0]?.arrivalTime).toBe('2026-04-06T13:00:00-04:00');
   });
 
-  it('15. resetPredictions+flush; removePrediction → remove broadcast; state has no prediction', () => {
+  it('15. resetPredictions+flush; removePrediction → removed contains id', () => {
     const p = mkPrediction({ id: 'p1' });
     const c = makeCoalescer();
     c.resetPredictions([p]);
     clock.advance(250);
     c.removePrediction('p1');
+    expect(state.getSnapshot().predictions['place-pktrm']?.some((x) => x.id === 'p1')).toBe(false);
     clock.advance(250);
-    const last = predictionCalls[predictionCalls.length - 1];
-    expect(last.type).toBe('remove');
-    if (last.type === 'remove') {
-      expect(last.id).toBe('p1');
-    }
-    expect(state.getState().predictions.get('place-pktrm') ?? []).toHaveLength(0);
+    expect(deltaCalls[1].predictions.removed).toEqual(['p1']);
   });
 
   it('16. alert LWW same id', () => {
@@ -328,28 +288,21 @@ describe('Coalescer', () => {
     c.upsertAlert(mkAlert({ id: 'a', header: 'one' }));
     c.upsertAlert(mkAlert({ id: 'a', header: 'two' }));
     clock.advance(250);
-    expect(alertCalls).toHaveLength(1);
-    expect(alertCalls[0].type).toBe('upsert');
-    if (alertCalls[0].type === 'upsert') {
-      expect(alertCalls[0].alert.header).toBe('two');
-    }
+    expect(deltaCalls[0].alerts.updated).toHaveLength(1);
+    expect(deltaCalls[0].alerts.updated?.[0]?.header).toBe('two');
   });
 
-  it('17. upsertAlert, removeAlert, resetAlerts([x]) → only reset broadcast', () => {
+  it('17. upsertAlert, removeAlert, resetAlerts([x]) → alerts.reset wins', () => {
     const x = mkAlert({ id: 'x' });
     const c = makeCoalescer();
     c.upsertAlert(mkAlert({ id: 'y' }));
     c.removeAlert('y');
     c.resetAlerts([x]);
     clock.advance(250);
-    expect(alertCalls).toHaveLength(1);
-    expect(alertCalls[0].type).toBe('reset');
-    if (alertCalls[0].type === 'reset') {
-      expect(alertCalls[0].alerts.map((a) => a.id)).toEqual(['x']);
-    }
+    expect(deltaCalls[0].alerts.reset?.map((a) => a.id)).toEqual(['x']);
   });
 
-  it('18. Flood: 200 vehicles: setTimeout once; state200 before advance; 200 upsert broadcasts; 200 unique ids', () => {
+  it('18. Flood: 200 vehicles collapse to one delta with 200 updated', () => {
     const c = makeCoalescer();
     for (let i = 0; i < 200; i++) {
       c.upsertVehicle(mkVehicle({ id: `v${i}`, label: String(i) }));
@@ -357,12 +310,9 @@ describe('Coalescer', () => {
     expect(clock.scheduleCalls).toHaveLength(1);
     expect(state.getState().vehicles.size).toBe(200);
     clock.advance(250);
-    expect(vehicleCalls).toHaveLength(200);
-    const ids = new Set<string>();
-    for (const msg of vehicleCalls) {
-      expect(msg.type).toBe('upsert');
-      if (msg.type === 'upsert') ids.add(msg.vehicle.id);
-    }
+    expect(deltaCalls).toHaveLength(1);
+    expect(deltaCalls[0].vehicles.updated).toHaveLength(200);
+    const ids = new Set(deltaCalls[0].vehicles.updated?.map((v) => v.id));
     expect(ids.size).toBe(200);
   });
 
@@ -371,7 +321,7 @@ describe('Coalescer', () => {
     const c = makeCoalescer();
     c.upsertVehicle(v);
     expect(state.getState().vehicles.get('w1')).toEqual(v);
-    expect(vehicleCalls).toHaveLength(0);
+    expect(deltaCalls).toHaveLength(0);
   });
 
   it('20. after reset+flush, remove writes through before second flush', () => {
@@ -382,7 +332,7 @@ describe('Coalescer', () => {
     c.removeVehicle('r1');
     expect(state.getState().vehicles.has('r1')).toBe(false);
     clock.advance(250);
-    expect(vehicleCalls.some((m) => m.type === 'remove' && m.id === 'r1')).toBe(true);
+    expect(deltaCalls[1].vehicles.removed).toEqual(['r1']);
   });
 
   it('21. close() clears timer, advance does not broadcast', () => {
@@ -392,6 +342,6 @@ describe('Coalescer', () => {
     c.close();
     expect(clock.pendingCount()).toBe(0);
     clock.advance(10_000);
-    expect(vehicleCalls).toHaveLength(0);
+    expect(deltaCalls).toHaveLength(0);
   });
 });

@@ -48,6 +48,16 @@ type AlertsUpdate =
   | { type: 'upsert'; alert: Alert }
   | { type: 'remove'; id: string };
 
+type DeltaPayload = {
+  vehicles: { reset?: Vehicle[]; updated?: Vehicle[]; removed?: string[] };
+  predictions: {
+    reset?: Record<string, Prediction[]>;
+    updated?: Prediction[];
+    removed?: string[];
+  };
+  alerts: { reset?: Alert[]; updated?: Alert[]; removed?: string[] };
+};
+
 // Pure reducers over a state slice — reused by both the public actions
 // (for tests and direct calls) and the `handleWsMessage` dispatcher. Keeping
 // them here lets handleWsMessage fold the data mutation AND the lastMessageTime
@@ -180,6 +190,51 @@ export const useSystemStore = create<SystemState>((set) => ({
             }));
             return;
         }
+        return;
+      }
+      case 'delta': {
+        const delta = msg.data as DeltaPayload;
+        set((s) => {
+          const nextVehicles =
+            delta.vehicles.reset ??
+            (() => {
+              let v = s.vehicles;
+              for (const u of delta.vehicles.updated ?? []) v = upsertById(v, u);
+              if ((delta.vehicles.removed?.length ?? 0) > 0) {
+                const removed = new Set(delta.vehicles.removed);
+                v = v.filter((x) => !removed.has(x.id));
+              }
+              return v;
+            })();
+
+          const nextPredictions =
+            delta.predictions.reset ??
+            (() => {
+              let p = s.predictions;
+              for (const u of delta.predictions.updated ?? []) p = upsertPredictionInto(p, u);
+              for (const id of delta.predictions.removed ?? []) p = removePredictionFrom(p, id);
+              return p;
+            })();
+
+          const nextAlerts =
+            delta.alerts.reset ??
+            (() => {
+              let a = s.alerts;
+              for (const u of delta.alerts.updated ?? []) a = upsertById(a, u);
+              if ((delta.alerts.removed?.length ?? 0) > 0) {
+                const removed = new Set(delta.alerts.removed);
+                a = a.filter((x) => !removed.has(x.id));
+              }
+              return a;
+            })();
+
+          return {
+            vehicles: nextVehicles,
+            predictions: nextPredictions,
+            alerts: nextAlerts,
+            lastMessageTime,
+          };
+        });
         return;
       }
       case 'heartbeat': {
