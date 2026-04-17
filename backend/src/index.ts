@@ -9,6 +9,7 @@ import { loadShapes } from './gtfs-loader.js';
 import { withMbtaKey } from './mbta-api-url.js';
 import { parseSchedule } from './mbta-parser.js';
 import { MbtaStream } from './mbta-stream.js';
+import { buildNextStopsForTrip } from './next-stops.js';
 import { ReferenceData } from './reference-data.js';
 import { StateManager } from './state-manager.js';
 import type { Alert, MbtaResource, Prediction, ScheduledDeparture, Vehicle } from './types.js';
@@ -233,10 +234,42 @@ const mbtaStream = new MbtaStream({
     switch (event.type) {
       case 'reset':
         coalescer.resetPredictions(event.data as Prediction[]);
+        (() => {
+          const ref = referenceData.getSnapshot();
+          if (!ref) return;
+          const stopNameById = new Map<string, string>();
+          for (const [id, s] of ref.stops) stopNameById.set(id, s.name);
+          const now = Date.now();
+          const snapshot = stateManager.getSnapshot();
+          const enriched = snapshot.vehicles.map((v) => ({
+            ...v,
+            nextStops: buildNextStopsForTrip(v.tripId, snapshot.predictions, stopNameById, now),
+          }));
+          coalescer.resetVehicles(enriched);
+        })();
         break;
       case 'add':
       case 'update':
         coalescer.upsertPrediction(event.data as Prediction);
+        (() => {
+          const p = event.data as Prediction;
+          if (!p.tripId) return;
+          const ref = referenceData.getSnapshot();
+          if (!ref) return;
+          const stopNameById = new Map<string, string>();
+          for (const [id, s] of ref.stops) stopNameById.set(id, s.name);
+          const now = Date.now();
+          const snapshot = stateManager.getSnapshot();
+          const vehicle = snapshot.vehicles.find((v) => v.tripId === p.tripId);
+          if (!vehicle) return;
+          const nextStops = buildNextStopsForTrip(
+            p.tripId,
+            snapshot.predictions,
+            stopNameById,
+            now,
+          );
+          coalescer.upsertVehicle({ ...vehicle, nextStops });
+        })();
         break;
       case 'remove':
         coalescer.removePrediction(event.id);

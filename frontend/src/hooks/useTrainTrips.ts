@@ -101,12 +101,13 @@ export function useTrainTrips(
   // Vehicles on these routes render with an amber delay marker.
   const delayedRoutes = useMemo(() => delayedRouteIds(alerts), [alerts]);
 
-  // Per-trip prediction index: for a given tripId, every stop this particular
-  // train still has in front of it. Previously we keyed by stopId, which
-  // returned *every* train queued at that stop — so two Red Line trains
-  // hovering at different locations would both show the same "future stops".
-  // Keying by tripId ensures each train's remaining-journey is its own.
   const predictionsByTrip = useMemo(() => {
+    // Day 5 migration: prefer server-provided `vehicle.nextStops` and avoid
+    // rebuilding a full prediction index in steady state. We keep this as a
+    // fallback for older backends that don't send `nextStops` yet.
+    const hasAnyNextStops = vehicles.some((v) => (v.nextStops?.length ?? 0) > 0);
+    if (hasAnyNextStops) return null;
+
     const m = new Map<string, Prediction[]>();
     for (const arr of Object.values(predictions)) {
       for (const p of arr) {
@@ -116,13 +117,11 @@ export function useTrainTrips(
         else m.set(p.tripId, [p]);
       }
     }
-    // Sort each bucket ascending by stopSequence so "origin" is first,
-    // "destination" is last, and slicing gives upcoming stops in order.
     for (const bucket of m.values()) {
       bucket.sort((a, b) => a.stopSequence - b.stopSequence);
     }
     return m;
-  }, [predictions]);
+  }, [predictions, vehicles]);
 
   useEffect(() => {
     if (routeShapes.size === 0) return;
@@ -190,9 +189,13 @@ export function useTrainTrips(
       // entry as "origin" because MBTA's predictions endpoint drops stops the
       // train has already served — so tripPreds[0] is the earliest *remaining*
       // stop, not the trip's true terminus-of-origin.)
-      const tripPreds = v.tripId ? (predictionsByTrip.get(v.tripId) ?? []) : [];
-      const destinationFromTrip =
-        tripPreds.length > 0 ? getStopName(tripPreds[tripPreds.length - 1].stopId) : '';
+      const tripPreds =
+        v.tripId && predictionsByTrip ? (predictionsByTrip.get(v.tripId) ?? []) : [];
+      const destinationFromTrip = (() => {
+        if (v.destination) return v.destination;
+        if (tripPreds.length > 0) return getStopName(tripPreds[tripPreds.length - 1].stopId);
+        return '';
+      })();
       const destinationHeadsign =
         DIRECTION_NAMES[v.routeId]?.[v.directionId] ?? `Direction ${v.directionId}`;
       const destinationName = destinationFromTrip || destinationHeadsign;
@@ -209,15 +212,23 @@ export function useTrainTrips(
         return hit?.stopSequence ?? -Infinity;
       })();
 
-      const futureStops = tripPreds
-        .filter((p) => p.stopSequence >= cutoffSeq && (p.arrivalTime || p.departureTime))
-        .slice(0, 6)
-        .map((p) => ({
-          stopId: p.stopId,
-          name: getStopName(p.stopId),
-          time: p.arrivalTime ?? p.departureTime,
-          status: p.status,
-        }));
+      const futureStops =
+        v.nextStops && v.nextStops.length > 0
+          ? v.nextStops.slice(0, 6).map((s) => ({
+              stopId: s.stopId,
+              name: s.stopName,
+              time: null,
+              status: s.status,
+            }))
+          : tripPreds
+              .filter((p) => p.stopSequence >= cutoffSeq && (p.arrivalTime || p.departureTime))
+              .slice(0, 6)
+              .map((p) => ({
+                stopId: p.stopId,
+                name: getStopName(p.stopId),
+                time: p.arrivalTime ?? p.departureTime,
+                status: p.status,
+              }));
 
       const color = getRouteColor(v.routeId);
       next.push({
