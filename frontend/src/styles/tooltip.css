@@ -21,7 +21,8 @@
 }
 
 /* Portaled + position:fixed via Floating UI (map hover coordinates). */
-.train-tooltip.train-tooltip--floating {
+.train-tooltip.train-tooltip--floating,
+.station-tooltip.station-tooltip--floating {
   z-index: 4000;
 }
 
