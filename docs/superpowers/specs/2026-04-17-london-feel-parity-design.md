@@ -44,13 +44,17 @@
 
 **File:** `backend/src/index.ts` (vehicle event handler near line 196).
 
-Add an in-memory `Map<vehicleId, { stopId: string; at: number }>` keyed by vehicle id. On every vehicle event:
+Add an in-memory `Map<vehicleId, { stopId: string; at: number; lastSeen: number }>` keyed by vehicle id. On every vehicle event:
 
-- If prior cached status was `STOPPED_AT` **and** incoming event is `IN_TRANSIT_TO` **or** `INCOMING_AT`, record `{ stopId: prev.stopId, at: Date.now() }` in the map.
-- If cache is empty for this vehicle and current status is `IN_TRANSIT_TO`, fallback: infer `lastDepartedStopId` from previous stop in the trip's stop pattern via `referenceData.getSnapshot().trips` (already loaded) and set `at = updatedAt - etaSec` approximation. When we can't infer, leave undefined — the tooltip falls back to "Heading to <next>".
+- Update `lastSeen = Date.now()` on any event for this id (so the TTL sweep can drop stale entries for trains MBTA silently dropped without a `remove` event).
+- If prior cached status was `STOPPED_AT` **and** incoming event is `IN_TRANSIT_TO` **or** `INCOMING_AT`, record `{ stopId: prev.stopId, at: Date.now(), lastSeen: Date.now() }`.
+- If cache is empty for this vehicle and current status is `IN_TRANSIT_TO`, fallback: infer `lastDepartedStopId` from previous stop in the trip's stop pattern via `referenceData.getSnapshot().trips` (already loaded). Leave `at` undefined — we don't fabricate a departure timestamp; the tooltip shows `Heading to <next>` without a percentage.
 - Attach `lastDepartedStopId` and `lastDepartedAt` to the enriched vehicle.
 
-Cleanup: when `coalescer.removeVehicle(id)` fires, delete the map entry (add a callback or inline in `onVehicleEvent` `remove` branch).
+**Cleanup / TTL:**
+- When `coalescer.removeVehicle(id)` fires, delete the map entry.
+- On a 5-minute `setInterval` (tracked + cleared in `shutdown()`), sweep entries whose `lastSeen` is older than 30 minutes and delete them. This catches trains MBTA dropped without a `remove` event (feed reconnect, trip_id reassignment at terminals, etc.) so the map cannot grow unbounded over multi-week uptimes.
+- First-observed mid-run cases (app restart, terminal trip_id flip, feed reconnect) are expected — not rare. They all fall through to the fallback branch, which must render `Heading to <next>` (never `Stopped at undefined`). Tooltip component has a defensive guard for this.
 
 **Wire format:** append two fields to `Vehicle` in `backend/src/types.ts` and `frontend/src/types.ts`:
 
@@ -82,15 +86,19 @@ export function segmentProgress(
 Rules:
 
 - If `vehicle.currentStatus === 'STOPPED_AT'` → `fraction: 0`, `fromStopName = vehicle.currentStopName`, `toStopName` = `vehicle.nextStops?.[0]?.stopName ?? null`.
-- Else if `lastDepartedAt && nextStops?.[0]?.etaSec`:
-  - `fromTs = lastDepartedAt`
-  - `toTs = Date.parse(vehicle.updatedAt) + nextStops[0].etaSec * 1000` (`updatedAt` is ISO-8601 from MBTA)
-  - `fraction = clamp((now - fromTs) / (toTs - fromTs), 0, 1)`
+- Else if `lastDepartedAt` is present:
+  - `fromTs = lastDepartedAt` (server-origin epoch ms, already normalized — see "Time + clock skew" below).
+  - `toTs` preference, in order:
+    1. `Date.parse(prediction.arrivalTime)` for the prediction whose `stopId === nextStops[0].stopId` and whose `tripId === vehicle.tripId` (absolute MBTA-origin timestamp; no two-step reconstruction error).
+    2. Fallback only when no matching prediction exists: `Date.parse(vehicle.updatedAt) + nextStops[0].etaSec * 1000`. Noted as lossy because `etaSec` is "from prediction's own `now`", which may differ from `updatedAt` by a few seconds.
+  - `fraction = clamp((now - fromTs) / (toTs - fromTs), 0, 1)` (clamp is a safety net, not the skew fix — see below).
   - `fromStopName = stopNameById(lastDepartedStopId)`
   - `toStopName = nextStops[0].stopName`
-- Else fallback to whole-route `progress` already on the vehicle (current behavior).
+- Else (`lastDepartedAt` unknown) → `fraction: null`; tooltip renders `Heading to {toStopName}` without a bar. Do NOT fall back to whole-route `progress` for segment display — it answers a different question and is misleading in this layout.
 
-Unit tests cover each branch.
+To access predictions the util takes a third argument: `predictionsByTripAndStop: (tripId: string, stopId: string) => Prediction | null`. Already available in the frontend store.
+
+Unit tests cover: prediction-preferred path, etaSec fallback path, missing-departure path (returns `fraction: null`), STOPPED_AT path.
 
 ### 3. Frontend: tooltip swap
 
@@ -98,11 +106,12 @@ Unit tests cover each branch.
 
 Replace the existing "Progress along route" block with:
 
-- Line 1: `{FROM}  →  {TO}` (muted arrow; station name bold)
-- Line 2: progress bar tinted with route color + `NN.N%` right-aligned
-- Progress updates on every rAF tick (already driven by `LiveMap`'s `playbackT` → pass `now` into tooltip via prop).
+- Line 1: `{FROM}  →  {TO}` (muted arrow; station name bold). If `toStopName` is null, render `Heading to {fromStopName or 'station'}` as a single line. Never render literal `undefined` / empty strings.
+- Line 2: progress bar tinted with route color + `NN.N%` right-aligned when `fraction !== null`. Hidden entirely when `fraction === null`.
 
-Keep the existing "Future Stops" list as-is. "Stopped at X" renders `fromStopName` bold, `toStopName` muted, bar at `0.0%`.
+**rAF ownership:** the tooltip itself owns the animation frame loop via a small `useAnimationFrame` hook that runs only while the tooltip is mounted. On unmount, the loop dies. `LiveMap` does NOT thread `now` through as a prop — that would trigger 60Hz diffs on the top-level map component even when the hover target is unchanged. The tooltip reads `serverOffsetMs` from the store and computes `serverNow = Date.now() + serverOffsetMs` inside the hook tick.
+
+"Stopped at X" renders `fromStopName` bold, `toStopName` muted, bar hidden.
 
 ### 4. Frontend: `darkenColor` util + apply to train layers
 
@@ -110,15 +119,30 @@ Keep the existing "Future Stops" list as-is. "Stopped at X" renders `fromStopNam
 
 ```ts
 export function darkenRgb(rgb: [number, number, number], factor: number): [number, number, number];
+export const BRAND_DARKEN_FACTOR: Record<string, number>; // keyed by routeId, default 0.7
 ```
+
+Rationale for per-route factors: MBTA's Red (`#DA291C`) is already darker than TfL's Central red (`#E32017`), so a uniform ×0.7 can push Red into muddy brown that stops reading as "Red Line" at glance. We expose a per-route override keyed by routeId with a 0.7 default. Initial values ship as:
+
+```ts
+BRAND_DARKEN_FACTOR = {
+  Red: 0.78,       // tuned so it stays unmistakably red
+  Orange: 0.72,
+  Blue: 0.7,
+  'Green-B': 0.7, 'Green-C': 0.7, 'Green-D': 0.7, 'Green-E': 0.7,
+  Mattapan: 0.7,
+};
+```
+
+Spot-check at zoom 12 + zoom 15 against the cream base during implementation; tune if anything reads muddy. If no route-specific value exists, default to 0.7.
 
 Applied in `LiveMap.tsx` when computing `trainDatums`:
 
-- `glow` and `core` TripsLayer colors → darkened ×0.7
-- head `Scatterplot` fill → darkened ×0.7; outline stays as is (dark ring reads cleanly)
-- PathLayer (static routes) unchanged (already blended toward cream)
+- `glow` and `core` TripsLayer colors → darkened per route factor.
+- head `Scatterplot` fill → darkened per route factor; outline stays `[11, 18, 27, 220]` (dark ring reads cleanly).
+- PathLayer (static routes) unchanged (already blended toward cream).
 
-Delayed trains still switch to amber (`[255, 199, 44]`) then darken ×0.7 for consistency.
+Delayed trains still switch to amber (`[255, 199, 44]`) then darken with a constant `AMBER_DARKEN = 0.8` (less aggressive because amber is already warm).
 
 ### 5. Frontend: trail retune
 
@@ -133,17 +157,21 @@ New:
 
 Single-trail variant considered — stacked keeps more legibility on our busier subway network vs. London's sparser feed, so we retune rather than collapse. `fadeTrail: true` already set.
 
+**Density criterion (pre-committed, not deferred):** after applying the retune, the test is: at Park St + Downtown Crossing during rush hour, can individual train directions be distinguished from arm's length (~2 ft)? If the core layer blurs into a red smear, collapse to a single trail at `trailLength: 20s`, `widthMinPixels: 7`, matching the reference site. Capture a screenshot at max density in the verification step to lock the decision.
+
 ### 6. Frontend: camera + station hover
 
 **File:** `LiveMap.tsx:110`.
 
-- `maxPitch: 85` (was 60)
-- `dragRotate: true` (default, verify)
-- `pitchWithRotate: true` to couple Shift+drag + right-click
+- `maxPitch: 85` (was 60) — raises the ceiling so right-click-drag can tilt to the low-angle 3D view the reference site uses.
+- `dragRotate: true` (MapLibre default — assert it, don't flip it, to prevent accidental regression).
+- `pitchWithRotate: true` — also a MapLibre default. Explicitly keeps pitch coupled to right-click-drag rotation (so the same gesture that spins the map also tilts it). It does NOT affect Shift+drag, which is a separate pan gesture.
 
 **File:** new/extend `frontend/src/overlays/StationTooltip.tsx`.
 
-Station hover (pickable on the existing stations `ScatterplotLayer`) → floating tooltip listing `{stopName}` + chip per route in `stop.routeIds`, each chip filled with darkened brand color. Reuse existing route color util; reuse the floating-ui positioning the train tooltip already uses.
+Station hover (pickable on the existing stations `ScatterplotLayer`) → floating tooltip listing `{stopName}` + chip per route in `stop.routeIds`, each chip filled with the darkened brand color via `darkenRgb` + `BRAND_DARKEN_FACTOR`. Reuse existing route color util; reuse the floating-ui positioning the train tooltip already uses.
+
+**Tooltip coordination (train + station must not fight):** there can be at most one tooltip visible. Implementation: hover state lives in a single `useHoveredEntity` hook returning a discriminated union `{ kind: 'train'; vehicle } | { kind: 'station'; stop } | null`. The rendered component switches on `kind`. Station picks are suppressed while a train tooltip is pinned open (click-to-pin already exists). This is cheaper than threading z-index / mutual exclusion logic through two independent components.
 
 ## Data Flow
 
@@ -159,10 +187,19 @@ SSE vehicle event
 
 ## Error Handling
 
-- Missing `lastDepartedAt` / `nextStops[0].etaSec`: util returns `fraction = 0`, tooltip renders `Heading to {toStopName}` with no bar.
-- Clock skew (server `updatedAt` > client now): clamp fraction `[0,1]`; no UI flicker.
-- Stop name not in reference snapshot: display stop id as fallback (existing `getStopName` helper).
+- Missing `lastDepartedAt`: util returns `fraction: null`; tooltip renders `Heading to {toStopName}` without a bar (no fake 0% pinning).
+- Stop name not in reference snapshot: display stop id as fallback (existing `getStopName` helper). Never render literal `undefined` in the tooltip — `TrainTooltip` falls back to `Heading to …` when either side is unresolved.
 - Reference-data refresh in flight: unchanged — fallback path already returns raw vehicle without enrichment (backend index.ts:218).
+
+### Time + clock skew
+
+Mixing `Date.now()` (client clock) with server-origin `updatedAt` / `arrivalTime` is the single biggest source of wrong percentages. Rules:
+
+- **All timestamps on the wire are server-origin** (MBTA → backend → WS). Frontend treats them as the source of truth for "when in MBTA time."
+- On WS connect, the server stamps the initial `full-state` message with `timestamp: Date.now()` (already present). The client computes `serverOffsetMs = serverTimestamp - Date.now()` once per connection and stores it on the store.
+- Every subsequent use of "now" in `segmentProgress` — and any other comparison against server-origin timestamps — uses `serverNow = Date.now() + serverOffsetMs`, not raw `Date.now()`.
+- `clamp([0, 1])` on the computed fraction stays as a defensive backstop but is not the primary skew mitigation.
+- On WS reconnect, recompute the offset from the new `full-state`. The heartbeat (`timestamp` every 10s) is also valid input if a drift correction becomes necessary later; v1 uses connect-time offset only for simplicity.
 
 ## Testing
 
@@ -200,16 +237,23 @@ Modified:
 
 Biggest perceptual shift first:
 
-1. **Backend departure cache** (unlocks segment progress). No visible change yet.
+1. **Backend departure cache + wire-format fields + frontend `serverOffsetMs`** (prep). No visible change yet.
 2. **`segmentProgress` util + TrainTooltip swap**. Biggest user-visible change.
 3. **`darkenColor` + apply to train layers**. Second-biggest visible shift.
-4. **Trail retune**. Fine polish.
-5. **maxPitch + dragRotate**. Tiny diff.
-6. **Station hover tooltip**. Self-contained add.
+4. **Trail retune** (with density screenshot). Fine polish.
+5. **maxPitch + dragRotate** (one-line change). Tiny diff.
+6. **Station hover tooltip + shared hover state**. Self-contained add.
 
-Each step shippable independently.
+**Ship pairing:** Steps 1 and 2 ship **together**. Shipping Step 1 alone adds `lastDepartedStopId` / `lastDepartedAt` to the `Vehicle` type on both sides of the wire without a reader — anyone editing vehicle shape in the gap inherits a half-used field. Steps 3, 4, 5, 6 are each independently shippable after 1+2 lands.
 
 ## Open Questions
 
-- `lastDepartedAt` inference when a vehicle first appears mid-trip (no prior `STOPPED_AT` observed): accept "fraction 0" until first stop observed, or reconstruct from `currentStopSequence - 1`? **Proposal:** accept fallback for first-observed cycle; most trains only reach us mid-run after app restart. Revisit if users flag it.
-- Single 20s trail vs. stacked 25/10 — will verify visually in dev; spec assumes stacked retune.
+- First-observed mid-run vehicles (app restart, feed reconnect, trip_id flip at terminal): spec resolves to `fraction: null` + `Heading to {next}`. Revisit only if user feedback says the unlabeled bar is missed more than 10% of hovers.
+- Stacked trail vs. single-trail collapse: resolved by the Park St density check in Step 4 verification — capture the screenshot, decide then, amend this spec with the final values.
+
+## Testing additions (time + coordination)
+
+- **Backend unit test** for departure-cache TTL sweep: entry whose `lastSeen` is older than 30 min is removed on the sweep tick; recent entry is retained.
+- **Frontend unit test** for clock-skew correction: with a stubbed `serverOffsetMs = 30_000`, `segmentProgress` called with `now = Date.now()` produces the same fraction it would with a skewless clock.
+- **Frontend unit test** for prediction-preferred `toTs`: when a matching prediction exists, util uses `prediction.arrivalTime`; when not, falls back to `updatedAt + etaSec`; difference is asserted numerically.
+- **Component test** for tooltip coordination: simultaneous train-hover + station-hover resolves to one tooltip, not two.
