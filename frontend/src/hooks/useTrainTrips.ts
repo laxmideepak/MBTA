@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Alert, Prediction, Vehicle } from '../types';
+import type { Alert, Prediction, Stop, Vehicle } from '../types';
 import { delayedRouteIds } from '../utils/alert-priority';
 import { getRouteColor } from '../utils/mbta-colors';
 import { DIRECTION_NAMES } from '../utils/mbta-routes';
@@ -50,6 +50,18 @@ export interface TrainTrip {
   progressVelocity: number;
   /** Remaining upcoming stops for THIS specific trip (sorted by stopSequence). */
   futureStops: { stopId: string; name: string; time: string | null; status: string | null }[];
+  /**
+   * Polyline sub-path between the train's last-departed station and its next
+   * station, oriented in the direction of travel. Used by the render loop to
+   * interpolate the head dot purely by **time between stops** —
+   * londonunderground.live-style — so the dot slides smoothly even when MBTA's
+   * GPS feed is noisy. Null when we lack departure/arrival timing.
+   */
+  segmentPath: [number, number][] | null;
+  /** Epoch ms of departure from the upstream station (server clock). */
+  segmentFromTs: number | null;
+  /** Epoch ms of predicted arrival at the downstream station (server clock). */
+  segmentToTs: number | null;
 }
 
 const TRAIL_SECS = 45;
@@ -62,9 +74,23 @@ const STOPPED_SPEED = 0.05;
 interface Anchor {
   routeId: string;
   directionId: number;
+  /** Monotonic-clamped polyline index of the latest GPS fix. Used for speed estimation. */
   targetIdx: number;
+  /** Wall-clock seconds when `targetIdx` was recorded. */
   t0: number;
+  /** Signed polyline-index rate (indices per second). Used for speed estimation. */
   speed: number;
+  /**
+   * Polyline index where the head dot was LAST rendered (visual anchor).
+   * Decoupled from `targetIdx` so a rebuild never snaps the dot backward: if
+   * our between-fix interpolation overshot, we hold the visual position
+   * instead of yanking it back to the new GPS fix.
+   */
+  visualIdx: number;
+  /** Wall-clock seconds when `visualIdx` was recorded. */
+  visualT0: number;
+  /** Non-negative polyline-index rate actually used to animate the head dot. */
+  visualSpeed: number;
 }
 
 function computeSpeed(prev: Anchor | undefined, targetIdx: number, nowSec: number): number {
@@ -78,6 +104,9 @@ function computeSpeed(prev: Anchor | undefined, targetIdx: number, nowSec: numbe
   return sign * Math.min(MAX_SPEED, Math.max(MIN_SPEED, Math.abs(est)));
 }
 
+/** Max polyline indices head dot may run ahead of latest GPS fix (seconds × speed). */
+const MAX_OVERSHOOT_SECS = 8;
+
 interface UseTrainTripsResult {
   trips: TrainTrip[];
   anchorTimeSec: number;
@@ -88,6 +117,7 @@ export function useTrainTrips(
   routeShapes: Map<string, { routeId: string; path: [number, number][] }[]>,
   predictions: Record<string, Prediction[]>,
   alerts: Alert[],
+  stops: Stop[],
 ): UseTrainTripsResult {
   const anchorsRef = useRef<Map<string, Anchor>>(new Map());
   const [state, setState] = useState<UseTrainTripsResult>(() => ({
@@ -100,6 +130,12 @@ export function useTrainTrips(
   // or a high-impact effect like SHUTTLE/SUSPENSION that's currently active).
   // Vehicles on these routes render with an amber delay marker.
   const delayedRoutes = useMemo(() => delayedRouteIds(alerts), [alerts]);
+
+  const stopsById = useMemo(() => {
+    const m = new Map<string, Stop>();
+    for (const s of stops ?? []) m.set(s.id, s);
+    return m;
+  }, [stops]);
 
   const predictionsByTrip = useMemo(() => {
     // Day 5 migration: prefer server-provided `vehicle.nextStops` and avoid
@@ -161,12 +197,42 @@ export function useTrainTrips(
       // each side of the head); MIN_SPEED keeps the trail visible even when
       // the train is nearly still so the worm doesn't shrink to a single dot.
       const absSpeed = Math.max(Math.abs(speed), MIN_SPEED);
+
+      // Visual anchor: never snap backward on rebuild.
+      //
+      // If the head dot's previous interpolated position is AHEAD of the new
+      // GPS fix (common — we over-predicted between fixes, or the train just
+      // transitioned to STOPPED_AT which pins `targetIdx` at a station while
+      // the dot was already past it), hold the visual position instead of
+      // yanking it back. Cap overshoot so ground truth eventually catches up
+      // rather than drifting forever. On first frame (no prevMatched) there's
+      // nothing to snap from — use the GPS fix.
+      //
+      // Applies equally to moving and stopped trains: the important invariant
+      // is "visual head must not regress between renders," which MBTA can
+      // violate via STOPPED_AT events even without any GPS jitter.
+      const maxOvershoot = Math.ceil(MAX_OVERSHOOT_SECS * absSpeed);
+      let visualIdx = targetIdx;
+      if (prevMatched) {
+        const dt = Math.max(0, anchorWallSec - prevMatched.visualT0);
+        const predicted = prevMatched.visualIdx + dt * prevMatched.visualSpeed;
+        // max(prev, min(predicted, truth+cap)): never below prev visual (no
+        // backward snap ever), never far ahead of truth (so GPS catches up).
+        const capped = Math.min(predicted, targetIdx + maxOvershoot);
+        visualIdx = Math.max(prevMatched.visualIdx, capped);
+      }
+      // Keep within polyline bounds.
+      visualIdx = Math.max(0, Math.min(coords.length - 1, visualIdx));
+
       const trailIdx = Math.ceil(TRAIL_SECS * absSpeed);
       const lookIdx = Math.ceil(LOOKAHEAD_SECS * absSpeed);
 
       const forward = speed >= 0;
-      const start = Math.max(0, targetIdx - (forward ? trailIdx : lookIdx));
-      const end = Math.min(coords.length - 1, targetIdx + (forward ? lookIdx : trailIdx));
+      // Slice is centered on the VISUAL head so path[headIdx] is exactly where
+      // the dot renders at playbackT=0 — no reset snap when effect reruns.
+      const centerIdx = Math.round(visualIdx);
+      const start = Math.max(0, centerIdx - (forward ? trailIdx : lookIdx));
+      const end = Math.min(coords.length - 1, centerIdx + (forward ? lookIdx : trailIdx));
       if (end - start < 1) continue;
 
       // Orient the sliced polyline in the direction of travel. For a forward
@@ -177,7 +243,7 @@ export function useTrainTrips(
       // array — and the whole trail becomes invisible.
       const sliced = coords.slice(start, end + 1);
       const path = forward ? sliced : sliced.slice().reverse();
-      const headIdx = forward ? targetIdx - start : path.length - 1 - (targetIdx - start);
+      const headIdx = forward ? centerIdx - start : path.length - 1 - (centerIdx - start);
 
       // With path oriented in travel direction, timestamps are strictly
       // increasing by construction: head = 0, trail entries (i < headIdx)
@@ -236,6 +302,47 @@ export function useTrainTrips(
                 status: p.status,
               }));
 
+      // ── Station-to-station segment (London-style time-driven head motion) ──
+      //
+      // When we know both endpoints (`lastDepartedStopId` with timestamp, and
+      // `nextStops[0]`) we project their lat/lng onto the route polyline, slice
+      // the polyline between them, and orient the slice in the direction of
+      // travel. The render loop then advances the head dot purely by
+      // `(serverNow - fromTs) / (toTs - fromTs)` clamped to [0, 1], yielding
+      // smooth motion regardless of GPS noise. Falls through to the GPS-based
+      // `interpolateAlongPath` path when any endpoint is missing.
+      let segmentPath: [number, number][] | null = null;
+      let segmentFromTs: number | null = null;
+      let segmentToTs: number | null = null;
+
+      const nextStop = v.nextStops && v.nextStops.length > 0 ? v.nextStops[0] : null;
+      const fromStop = v.lastDepartedStopId ? (stopsById.get(v.lastDepartedStopId) ?? null) : null;
+      const toStop = nextStop ? (stopsById.get(nextStop.stopId) ?? null) : null;
+
+      if (fromStop && toStop && v.lastDepartedAt != null && nextStop) {
+        const pred =
+          predictions[nextStop.stopId]?.find(
+            (p) => p.tripId === v.tripId && p.stopId === nextStop.stopId,
+          ) ?? null;
+        const predArrivalMs = pred?.arrivalTime ? Date.parse(pred.arrivalTime) : Number.NaN;
+        const toTs = Number.isFinite(predArrivalMs)
+          ? predArrivalMs
+          : Date.parse(v.updatedAt) + nextStop.etaSec * 1000;
+
+        if (Number.isFinite(toTs) && toTs > v.lastDepartedAt) {
+          const fromIdx = findNearestPointIndex(fromStop.longitude, fromStop.latitude, coords);
+          const toIdx = findNearestPointIndex(toStop.longitude, toStop.latitude, coords);
+          const lo = Math.min(fromIdx, toIdx);
+          const hi = Math.max(fromIdx, toIdx);
+          if (hi > lo) {
+            const sub = coords.slice(lo, hi + 1);
+            segmentPath = toIdx < fromIdx ? sub.slice().reverse() : sub;
+            segmentFromTs = v.lastDepartedAt;
+            segmentToTs = toTs;
+          }
+        }
+      }
+
       const color = getRouteColor(v.routeId);
       next.push({
         id: v.id,
@@ -256,6 +363,9 @@ export function useTrainTrips(
         progress: targetIdx / Math.max(1, coords.length - 1),
         progressVelocity: speed / Math.max(1, coords.length - 1),
         futureStops,
+        segmentPath,
+        segmentFromTs,
+        segmentToTs,
       });
 
       anchors.set(v.id, {
@@ -264,6 +374,9 @@ export function useTrainTrips(
         targetIdx,
         t0: anchorWallSec,
         speed: speed === 0 ? DEFAULT_SPEED : speed,
+        visualIdx,
+        visualT0: anchorWallSec,
+        visualSpeed: animSpeed,
       });
     }
 
@@ -281,7 +394,7 @@ export function useTrainTrips(
     }
 
     setState({ trips: next, anchorTimeSec: anchorWallSec });
-  }, [vehicles, routeShapes, predictionsByTrip, delayedRoutes]);
+  }, [vehicles, routeShapes, predictionsByTrip, delayedRoutes, stopsById, predictions]);
 
   return state;
 }
