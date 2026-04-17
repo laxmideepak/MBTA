@@ -126,10 +126,16 @@ Rationale for per-route factors: MBTA's Red (`#DA291C`) is already darker than T
 
 ```ts
 BRAND_DARKEN_FACTOR = {
-  Red: 0.78,       // tuned so it stays unmistakably red
+  // MBTA Red is already darker than TfL Central red; 0.78 preserves recognizability on cream.
+  Red: 0.78,
+  // Slight extra desaturation to keep Orange distinguishable from the amber delay marker.
   Orange: 0.72,
+  // Standard 0.7 reads cleanly on cream.
   Blue: 0.7,
+  // Green branches all share the same brand hex; use the standard 0.7 for every branch.
   'Green-B': 0.7, 'Green-C': 0.7, 'Green-D': 0.7, 'Green-E': 0.7,
+  // Mattapan uses the Red-Line hex per MBTA branding, but the route is sparse enough
+  // that the standard 0.7 reads fine; bump if it ever looks muddy.
   Mattapan: 0.7,
 };
 ```
@@ -157,7 +163,13 @@ New:
 
 Single-trail variant considered — stacked keeps more legibility on our busier subway network vs. London's sparser feed, so we retune rather than collapse. `fadeTrail: true` already set.
 
-**Density criterion (pre-committed, not deferred):** after applying the retune, the test is: at Park St + Downtown Crossing during rush hour, can individual train directions be distinguished from arm's length (~2 ft)? If the core layer blurs into a red smear, collapse to a single trail at `trailLength: 20s`, `widthMinPixels: 7`, matching the reference site. Capture a screenshot at max density in the verification step to lock the decision.
+**Density decision rule (pre-committed, auditable, not "we'll eyeball it"):**
+
+1. After applying the retune, open http://localhost:5173 during rush hour (or replay fixture).
+2. Zoom to Park St + Downtown Crossing; capture **screenshot A = stacked (25s / 10s)**.
+3. Apply the single-trail fallback (`trailLength: 20s`, `widthMinPixels: 7`), capture **screenshot B = single**.
+4. If in screenshot A you can distinguish individual train directions from arm's length (~2 ft), stacked stays. Otherwise collapse to single.
+5. Attach both screenshots to the PR description so the reviewer can sanity-check the call.
 
 ### 6. Frontend: camera + station hover
 
@@ -200,20 +212,27 @@ Mixing `Date.now()` (client clock) with server-origin `updatedAt` / `arrivalTime
 - Every subsequent use of "now" in `segmentProgress` — and any other comparison against server-origin timestamps — uses `serverNow = Date.now() + serverOffsetMs`, not raw `Date.now()`.
 - `clamp([0, 1])` on the computed fraction stays as a defensive backstop but is not the primary skew mitigation.
 - On WS reconnect, recompute the offset from the new `full-state`. The heartbeat (`timestamp` every 10s) is also valid input if a drift correction becomes necessary later; v1 uses connect-time offset only for simplicity.
+- On WS `close` the client clears `serverOffsetMs` to `null`. `segmentProgress` treats null offset as "unknown" and returns `fraction: null` until the next `full-state` reestablishes it — the tooltip degrades to `Heading to …` for the ~100–500 ms reconnect window instead of rendering a confidently-wrong percentage computed from a stale offset.
 
 ## Testing
 
 - **Backend unit test** for departure-transition cache:
-  - `STOPPED_AT → IN_TRANSIT_TO` records prior stop.
+  - `STOPPED_AT → IN_TRANSIT_TO` records prior stop and `at` timestamp.
   - `IN_TRANSIT_TO → IN_TRANSIT_TO` (different stop) does not record.
+  - `IN_TRANSIT_TO → STOPPED_AT` (arrival at next station) does NOT update the cache — the prior departure becomes stale the instant the vehicle reaches the next stop; the entry remains until the next `STOPPED_AT → IN_TRANSIT_TO` transition overwrites it.
   - `remove` event clears cache.
 - **Frontend unit test** `segmentProgress`:
-  - STOPPED_AT → `fraction 0`
-  - mid-segment → clamped fraction matches `(now - from) / (to - from)`
-  - missing `lastDepartedAt` → falls back to whole-route progress
+  - STOPPED_AT → `fraction: 0`
+  - mid-segment with matching prediction → fraction uses `prediction.arrivalTime` (absolute)
+  - mid-segment without matching prediction → fraction uses `updatedAt + etaSec` fallback; result differs from the prediction-preferred result numerically
+  - missing `lastDepartedAt` → returns `fraction: null` (tooltip renders `Heading to …` without a bar — asserted in the component test)
+  - null `serverOffsetMs` → returns `fraction: null` (tooltip shows `Heading to …` until offset reestablishes)
 - **Frontend unit test** `darkenRgb`:
   - factor 1.0 → no change, factor 0.7 matches reference values, factor 0 → [0,0,0], clamps on out-of-range input.
-- **Component test** `TrainTooltip` with stubbed vehicle renders `FROM → TO NN.N%` bar; updating `now` prop re-renders bar.
+- **Component test** `TrainTooltip`:
+  - Mounted with stubbed `segmentProgress` returning increasing fractions → bar fill advances across rAF frames (drive with `vi.useFakeTimers()` or a mocked `requestAnimationFrame`).
+  - Unmount cancels the rAF loop — assert via a spied `cancelAnimationFrame`.
+  - `fraction: null` branch → renders `Heading to {toStopName}` with no progress bar in the DOM.
 - **Smoke**: run `pnpm dev`, open http://localhost:5173, pick a red-line train, confirm tooltip updates continuously and the tilt works.
 
 ## File Inventory
