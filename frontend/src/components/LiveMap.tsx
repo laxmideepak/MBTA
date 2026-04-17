@@ -10,11 +10,12 @@ import { useRouteData } from '../hooks/useRouteData';
 import { type TrainTrip, useTrainTrips } from '../hooks/useTrainTrips';
 import { StationTooltip } from '../overlays/StationTooltip';
 import { TrainTooltip } from '../overlays/TrainTooltip';
+import { useSystemStore } from '../store/systemStore';
 import type { Alert, Prediction, Stop, Vehicle } from '../types';
 import { AMBER_DARKEN, BRAND_DARKEN_FACTOR, darkenRgb } from '../utils/color';
 import { createDebugWormTrip, isDebugTripsWormEnabled } from '../utils/debug-trips-worm';
 import { add3DBuildingLayer, getMapStyle } from '../utils/map-style';
-import { interpolateAlongPath } from '../utils/trip-geometry';
+import { interpolateAlongPath, interpolateAlongSegment } from '../utils/trip-geometry';
 
 const MAP_STYLE = getMapStyle();
 
@@ -62,7 +63,13 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
   const [zoom, setZoom] = useState(12.4);
 
   const { routeShapes, stops } = useRouteData();
-  const { trips, anchorTimeSec } = useTrainTrips(vehicles, routeShapes, predictions, alerts);
+  const { trips, anchorTimeSec } = useTrainTrips(
+    vehicles,
+    routeShapes,
+    predictions,
+    alerts,
+    stops,
+  );
 
   // Refs feed the rAF loop; updating them does not retrigger the loop effect.
   const tripsRef = useRef<TrainTrip[]>(trips);
@@ -245,6 +252,13 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
         // rebuild instead of diffing every vehicle's delay flag each frame.
         const colorVersion = anchorRef.current;
 
+        // Server clock for London-style time-driven head interpolation. Read
+        // per frame via getState() (not a subscription) so we don't remount
+        // the rAF loop whenever the offset updates. Null when the WS is not
+        // yet synced — we fall back to GPS-based interp in that case.
+        const offsetMs = useSystemStore.getState().serverOffsetMs;
+        const serverNowMs = offsetMs == null ? null : Date.now() + offsetMs;
+
         // londonunderground.live-style comet: single tapered worm from
         // soft wide glow (tail-visible) + thin crisp core (hover-pickable).
         // fadeTrail makes vTime < currentTime - trailLength render as alpha 0,
@@ -331,7 +345,13 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
         const trainsHead = new ScatterplotLayer<TrainTrip>({
           id: 'trains-head',
           data,
-          getPosition: (d) => interpolateAlongPath(d, playbackT),
+          getPosition: (d) => {
+            if (serverNowMs != null) {
+              const seg = interpolateAlongSegment(d, serverNowMs);
+              if (seg) return seg;
+            }
+            return interpolateAlongPath(d, playbackT);
+          },
           getFillColor: (d) => {
             // Darken with the same per-route factor used by the trail layers
             // so the head dot and its comet read as a single object. Outline
@@ -356,10 +376,13 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
           pickable: true,
           onHover: (info) => handleTrainHoverRef.current(info),
           parameters: NO_DEPTH_TEST,
-          // playbackT in getPosition trigger: force per-frame re-eval of the
-          // interpolated position (deck.gl otherwise skips accessor re-runs
-          // when `data` keeps the same reference across frames).
-          updateTriggers: { getPosition: playbackT, getFillColor: colorVersion },
+          // Use `serverNowMs ?? playbackT` so deck.gl re-evaluates the head's
+          // position every frame whether we're on the segment path (time-based
+          // London style) or the GPS fallback.
+          updateTriggers: {
+            getPosition: serverNowMs ?? playbackT,
+            getFillColor: colorVersion,
+          },
         });
 
         const layers: Layer[] = [...staticLayersRef.current, trailGlow, trainsCore, trainsHead];

@@ -1,6 +1,36 @@
 import type { TrainTrip } from '../hooks/useTrainTrips';
 
 /**
+ * Pure time-based head position along the station-to-station `segmentPath`.
+ * Londonunderground.live-style: the dot's fraction along the sub-path is
+ * `(serverNowMs - fromTs) / (toTs - fromTs)` clamped to [0, 1], so motion is
+ * smooth regardless of how noisy the GPS feed is between the two stations.
+ *
+ * Returns `null` when the trip has no segment data (missing depart cache,
+ * missing next-stop prediction, or zero-length segment); callers should fall
+ * back to `interpolateAlongPath`.
+ */
+export function interpolateAlongSegment(
+  trip: TrainTrip,
+  serverNowMs: number,
+): [number, number] | null {
+  const { segmentPath, segmentFromTs, segmentToTs } = trip;
+  if (!segmentPath || segmentFromTs == null || segmentToTs == null) return null;
+  if (segmentPath.length < 2) return null;
+  const denom = Math.max(1, segmentToTs - segmentFromTs);
+  const raw = (serverNowMs - segmentFromTs) / denom;
+  const frac = raw < 0 ? 0 : raw > 1 ? 1 : raw;
+  const maxIdx = segmentPath.length - 1;
+  const pos = frac * maxIdx;
+  const i0 = Math.floor(pos);
+  const i1 = i0 >= maxIdx ? maxIdx : i0 + 1;
+  const f = pos - i0;
+  const [x0, y0] = segmentPath[i0];
+  const [x1, y1] = segmentPath[i1];
+  return [x0 + (x1 - x0) * f, y0 + (y1 - y0) * f];
+}
+
+/**
  * Linear interpolation along `trip.path` at elapsed time `t` (seconds since
  * trip rebuild). Path is oriented in the direction of travel (see TrainTrip
  * docs), so the head marches forward from `headIdx` at `speed` polyline-index

@@ -40,5 +40,8 @@ export function createDebugWormTrip(): TrainTrip {
     progress: 1,
     progressVelocity: 0,
     futureStops: [],
+    segmentPath: null,
+    segmentFromTs: null,
+    segmentToTs: null,
   };
 }
