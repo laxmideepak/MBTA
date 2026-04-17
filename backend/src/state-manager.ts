@@ -73,12 +73,15 @@ export class StateManager {
   }
 
   getSnapshot() {
+    // Copy each inner array so callers (coalescer flush → WS broadcast) can't
+    // observe torn state when a later upsert/remove mutates the underlying
+    // list in place (see upsertPrediction / removePredictionById).
     const predictions: Record<string, Prediction[]> = {};
-    for (const [stopId, preds] of this.state.predictions) predictions[stopId] = preds;
+    for (const [stopId, preds] of this.state.predictions) predictions[stopId] = [...preds];
     return {
       vehicles: Array.from(this.state.vehicles.values()),
       predictions,
-      alerts: this.state.alerts,
+      alerts: [...this.state.alerts],
     };
   }
 }

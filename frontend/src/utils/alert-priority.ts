@@ -138,7 +138,7 @@ export function delayedRouteIds(alerts: Alert[], nowMs = Date.now()): Set<string
   for (const alert of alerts) {
     const vis = classifyAlert(alert, nowMs);
     if (!vis.delaysService) continue;
-    for (const e of alert.informedEntities) {
+    for (const e of alert.informedEntities ?? []) {
       if (e.routeId) out.add(e.routeId);
     }
   }

@@ -97,5 +97,14 @@ export function formatScheduledStatus(iso: string, now: Date = new Date()): stri
   const diffMin = Math.round((d.getTime() - now.getTime()) / 60_000);
   if (diffMin <= 1) return '1 min';
   if (diffMin <= 60) return `${diffMin} min`;
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  // Beyond an hour out we render in Boston time — a rider anywhere in the
+  // world should see the station clock, not their local timezone. Keep AM/PM
+  // here (unlike formatClockTime) because scheduled times can cross the
+  // AM/PM boundary and "2:17" alone would be ambiguous.
+  return new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'America/New_York',
+    hour12: true,
+  }).format(d);
 }

@@ -38,7 +38,9 @@ const AlertRow: FC<{ alert: Alert }> = ({ alert }) => {
   const [expanded, setExpanded] = useState(false);
   const vis = classifyAlert(alert);
   const routeIds = Array.from(
-    new Set(alert.informedEntities.map((e) => e.routeId).filter((id): id is string => !!id)),
+    new Set(
+      (alert.informedEntities ?? []).map((e) => e.routeId).filter((id): id is string => !!id),
+    ),
   );
   // Prefer the shortest label that's still informative.
   const primary = alert.serviceEffect || alert.shortHeader || alert.header;

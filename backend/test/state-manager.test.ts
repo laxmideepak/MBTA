@@ -162,5 +162,51 @@ describe('StateManager', () => {
       expect(snapshot.predictions).toBeInstanceOf(Object);
       expect(snapshot.alerts).toBeInstanceOf(Array);
     });
+
+    it('isolates predictions and alerts from later in-place mutations', () => {
+      const pred: Prediction = {
+        id: 'pred-1',
+        routeId: 'Red',
+        stopId: 'place-pktrm',
+        directionId: 0,
+        arrivalTime: '2026-04-06T12:10:00-04:00',
+        departureTime: '2026-04-06T12:10:30-04:00',
+        status: null,
+        tripId: 'trip-100',
+        vehicleId: 'y1234',
+        stopSequence: 5,
+      };
+      const alert: Alert = {
+        id: 'alert-1',
+        effect: 'SHUTTLE',
+        cause: 'MAINTENANCE',
+        header: 'hdr',
+        description: 'desc',
+        severity: 7,
+        lifecycle: 'ONGOING',
+        activePeriod: [],
+        informedEntities: [],
+        updatedAt: '2026-04-06T08:00:00-04:00',
+      };
+      manager.resetPredictions([pred]);
+      manager.resetAlerts([alert]);
+
+      const snapshot = manager.getSnapshot();
+      const snapPredsBefore = snapshot.predictions['place-pktrm'].length;
+      const snapAlertsBefore = snapshot.alerts.length;
+
+      // Simulate the coalescer flush → WS broadcast race: further upserts
+      // mutate the internal arrays. The snapshot already in flight must
+      // not observe these changes.
+      manager.upsertPrediction({ ...pred, id: 'pred-2' });
+      manager.upsertAlert({ ...alert, id: 'alert-2' });
+      manager.removePredictionById('pred-1');
+      manager.removeAlert('alert-1');
+
+      expect(snapshot.predictions['place-pktrm']).toHaveLength(snapPredsBefore);
+      expect(snapshot.predictions['place-pktrm'][0].id).toBe('pred-1');
+      expect(snapshot.alerts).toHaveLength(snapAlertsBefore);
+      expect(snapshot.alerts[0].id).toBe('alert-1');
+    });
   });
 });
