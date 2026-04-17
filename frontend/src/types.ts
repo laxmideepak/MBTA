@@ -1,48 +1,105 @@
 export interface Vehicle {
-  id: string; routeId: string; latitude: number; longitude: number;
-  bearing: number; currentStatus: 'IN_TRANSIT_TO' | 'STOPPED_AT' | 'INCOMING_AT';
-  stopId: string; directionId: number; label: string; updatedAt: string;
-}
-
-export interface Prediction {
-  id: string; routeId: string; stopId: string; directionId: number;
-  arrivalTime: string | null; departureTime: string | null;
-  status: string | null; tripId: string; vehicleId: string | null; stopSequence: number;
-}
-
-export interface Alert {
-  id: string; effect: string; cause: string; header: string; description: string;
-  severity: number; lifecycle: string;
-  activePeriod: { start: string; end: string | null }[];
-  informedEntities: {
-    routeId: string | null; stopId: string | null; directionId: number | null;
-    routeType: number | null; activities: string[];
-  }[];
+  id: string;
+  routeId: string;
+  latitude: number;
+  longitude: number;
+  bearing: number;
+  currentStatus: 'IN_TRANSIT_TO' | 'STOPPED_AT' | 'INCOMING_AT';
+  stopId: string;
+  currentStopSequence: number | null;
+  directionId: number;
+  label: string;
+  tripId: string;
   updatedAt: string;
 }
 
-export interface FacilityWithStatus {
-  facility: {
-    id: string; longName: string; shortName: string;
-    type: 'ELEVATOR' | 'ESCALATOR'; stopId: string;
-    latitude: number | null; longitude: number | null;
-  };
-  status: { facilityId: string; status: 'WORKING' | 'OUT_OF_ORDER'; updatedAt: string } | undefined;
+export interface Prediction {
+  id: string;
+  routeId: string;
+  stopId: string;
+  directionId: number;
+  arrivalTime: string | null;
+  departureTime: string | null;
+  status: string | null;
+  tripId: string;
+  vehicleId: string | null;
+  stopSequence: number;
 }
 
-export interface Weather { temperature: number; condition: string; icon: string; }
+/**
+ * Published (timetable) departure from mbta.com/schedules. No live prediction
+ * — arrival/departure times are the schedule MBTA publishes day-of. Used to
+ * fill out the board when live predictions are sparse.
+ */
+export interface ScheduledDeparture {
+  id: string;
+  routeId: string;
+  stopId: string;
+  directionId: number;
+  arrivalTime: string | null;
+  departureTime: string | null;
+  tripId: string;
+  stopSequence: number;
+}
+
+export type AlertLifecycle =
+  | 'NEW'
+  | 'ONGOING'
+  | 'UPCOMING'
+  | 'ONGOING_UPCOMING'
+  | 'CLOSED'
+  | 'UNKNOWN';
+
+export interface Alert {
+  id: string;
+  effect: string;
+  cause: string;
+  /** Verbose human header. Use only in expanded / detail contexts. */
+  header: string;
+  /** 140-char MBTA-curated summary (v3 short_header). */
+  shortHeader: string;
+  /** Tiny curated label, e.g. "Green Line B shuttle". Primary banner text. */
+  serviceEffect: string;
+  /** Human time hint, e.g. "Starting Wednesday" / "later today". */
+  timeframe: string | null;
+  /** When populated, MBTA marks this alert as front-and-center. */
+  banner: string | null;
+  description: string;
+  severity: number;
+  lifecycle: AlertLifecycle;
+  /** Deep link to mbta.com for full details. */
+  url: string | null;
+  activePeriod: { start: string; end: string | null }[];
+  informedEntities: {
+    routeId: string | null;
+    stopId: string | null;
+    directionId: number | null;
+    routeType: number | null;
+    activities: string[];
+  }[];
+  createdAt: string | null;
+  updatedAt: string;
+}
 
 export interface SystemSnapshot {
-  vehicles: Vehicle[]; predictions: Record<string, Prediction[]>;
-  alerts: Alert[]; facilities: FacilityWithStatus[]; weather: Weather | null;
+  vehicles: Vehicle[];
+  predictions: Record<string, Prediction[]>;
+  alerts: Alert[];
 }
 
-export type WsMessageType = 'full-state' | 'vehicles-update' | 'predictions-update' | 'alerts-update' | 'facilities-update' | 'weather-update';
-export interface WsMessage { type: WsMessageType; data: any; timestamp: number; }
+type WsMessageType = 'full-state' | 'vehicles-update' | 'predictions-update' | 'alerts-update';
+export interface WsMessage {
+  type: WsMessageType;
+  data: any;
+  timestamp: number;
+}
 export type ViewMode = 'map' | 'boards';
 
-export interface RouteShape { shapeId: string; coordinates: [number, number][]; }
 export interface Stop {
-  id: string; name: string; latitude: number; longitude: number;
-  wheelchairBoarding: number; routeIds: string[];
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  wheelchairBoarding: number;
+  routeIds: string[];
 }

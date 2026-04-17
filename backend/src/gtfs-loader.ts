@@ -36,7 +36,7 @@ export function decodePolyline(encoded: string): [number, number][] {
   return points;
 }
 
-export interface RouteShape {
+interface RouteShape {
   shapeId: string;
   routeId: string;
   coordinates: [number, number][];
@@ -60,7 +60,7 @@ export async function loadShapes(apiKey: string): Promise<Map<string, RouteShape
         coordinates: decodePolyline(resource.attributes.polyline as string),
       }));
       return { routeId, shapes };
-    })
+    }),
   );
 
   const shapesByRoute = new Map<string, RouteShape[]>();

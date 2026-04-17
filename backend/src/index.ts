@@ -1,17 +1,16 @@
 import 'dotenv/config';
-import express from 'express';
+import { createServer } from 'node:http';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { createServer } from 'http';
-import { StateManager } from './state-manager.js';
-import { MbtaStream } from './mbta-stream.js';
-import { WsBroadcaster } from './ws-server.js';
-import { FacilityPoller } from './facility-poller.js';
-import { WeatherPoller } from './weather-poller.js';
-import { withMbtaKey } from './mbta-api-url.js';
+import express from 'express';
 import { loadShapes } from './gtfs-loader.js';
-import type { Vehicle, Prediction, Alert } from './types.js';
+import { withMbtaKey } from './mbta-api-url.js';
+import { parseSchedule } from './mbta-parser.js';
+import { MbtaStream } from './mbta-stream.js';
+import { StateManager } from './state-manager.js';
+import type { Alert, MbtaResource, Prediction, ScheduledDeparture, Vehicle } from './types.js';
+import { WsBroadcaster } from './ws-server.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -58,7 +57,9 @@ app.get('/ready', (_req, res) => {
   if (hasVehicles && sseConnected) {
     res.json({ ready: true });
   } else {
-    res.status(503).json({ ready: false, reason: !sseConnected ? 'SSE not connected' : 'No vehicle data' });
+    res
+      .status(503)
+      .json({ ready: false, reason: !sseConnected ? 'SSE not connected' : 'No vehicle data' });
   }
 });
 
@@ -95,6 +96,91 @@ app.get('/api/stops', async (_req, res) => {
   }
 });
 
+// Proxy to MBTA V3 /schedules. Stations can be parent ("place-pktrm") or
+// platform ("70075") IDs; MBTA fans parent IDs out to all platforms. We cache
+// briefly so repeated board refreshes don't hammer the API — published
+// schedules only change day-to-day.
+const schedulesCache = new Map<
+  string,
+  { data: { schedules: ScheduledDeparture[] }; expiry: number }
+>();
+const SCHEDULES_CACHE_TTL = 60_000;
+const SCHEDULES_CACHE_MAX = 500;
+
+/**
+ * MBTA `/schedules` filter[min_time] expects HH:MM in Boston-local time
+ * on the current service day. We push the cutoff back by a small grace
+ * window so "just departed" rows still appear at the top of the board.
+ * Returns null if we can't format (fall back to no min_time).
+ */
+function mbtaBostonMinTime(now: Date = new Date(), graceMinutes = 5): string | null {
+  try {
+    const shifted = new Date(now.getTime() - graceMinutes * 60_000);
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+    }).formatToParts(shifted);
+    const hh = parts.find((p) => p.type === 'hour')?.value ?? '00';
+    const mm = parts.find((p) => p.type === 'minute')?.value ?? '00';
+    return `${hh === '24' ? '00' : hh}:${mm}`;
+  } catch {
+    return null;
+  }
+}
+
+app.get('/api/schedules', async (req, res) => {
+  const stopParam = String(req.query.stop ?? '').trim();
+  if (!stopParam) {
+    return res.status(400).json({ error: 'stop query param is required' });
+  }
+  const stops = Array.from(
+    new Set(
+      stopParam
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  ).sort();
+  if (stops.length === 0) {
+    return res.status(400).json({ error: 'stop query param is required' });
+  }
+  const key = stops.join(',');
+  const now = Date.now();
+  const cached = schedulesCache.get(key);
+  if (cached && now < cached.expiry) {
+    return res.json(cached.data);
+  }
+  try {
+    // Server-side filter[min_time] keeps payloads small — a busy stop like
+    // Park Street has 400+ schedules/day, only the next hour's worth matter.
+    const minTime = mbtaBostonMinTime();
+    const minTimeParam = minTime ? `&filter[min_time]=${encodeURIComponent(minTime)}` : '';
+    const url = `https://api-v3.mbta.com/schedules?filter[stop]=${encodeURIComponent(key)}${minTimeParam}&sort=arrival_time&page[limit]=60`;
+    const response = await fetch(withMbtaKey(url, MBTA_API_KEY));
+    if (!response.ok) {
+      throw new Error(`MBTA schedules ${response.status} ${response.statusText}`);
+    }
+    const json = (await response.json()) as { data?: MbtaResource[] };
+    const parsed: ScheduledDeparture[] = (json.data ?? [])
+      .map(parseSchedule)
+      .filter((s): s is ScheduledDeparture => s !== null);
+    const body = { schedules: parsed };
+    schedulesCache.set(key, { data: body, expiry: now + SCHEDULES_CACHE_TTL });
+    if (schedulesCache.size > SCHEDULES_CACHE_MAX) {
+      for (const [k, v] of schedulesCache) {
+        if (now > v.expiry) schedulesCache.delete(k);
+        if (schedulesCache.size <= SCHEDULES_CACHE_MAX / 2) break;
+      }
+    }
+    res.json(body);
+  } catch (err) {
+    console.error('[/api/schedules] Error:', err);
+    res.status(500).json({ error: 'Failed to fetch schedules' });
+  }
+});
+
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (_req, res) => {
     res.sendFile(path.join(__dirname, '../../frontend/dist/index.html'));
@@ -108,7 +194,10 @@ const mbtaStream = new MbtaStream({
     switch (event.type) {
       case 'reset':
         stateManager.resetVehicles(event.data as Vehicle[]);
-        wsBroadcaster.broadcastVehicles({ type: 'reset', vehicles: stateManager.getSnapshot().vehicles });
+        wsBroadcaster.broadcastVehicles({
+          type: 'reset',
+          vehicles: stateManager.getSnapshot().vehicles,
+        });
         break;
       case 'add':
       case 'update':
@@ -126,7 +215,10 @@ const mbtaStream = new MbtaStream({
     switch (event.type) {
       case 'reset':
         stateManager.resetPredictions(event.data as Prediction[]);
-        wsBroadcaster.broadcastPredictions({ type: 'reset', predictions: stateManager.getSnapshot().predictions });
+        wsBroadcaster.broadcastPredictions({
+          type: 'reset',
+          predictions: stateManager.getSnapshot().predictions,
+        });
         break;
       case 'add':
       case 'update':
@@ -135,7 +227,7 @@ const mbtaStream = new MbtaStream({
         break;
       case 'remove':
         stateManager.removePredictionById(event.id);
-        wsBroadcaster.broadcastPredictions({ type: 'reset', predictions: stateManager.getSnapshot().predictions });
+        wsBroadcaster.broadcastPredictions({ type: 'remove', id: event.id });
         break;
     }
   },
@@ -162,27 +254,6 @@ const mbtaStream = new MbtaStream({
   },
 });
 
-const facilityPoller = new FacilityPoller({
-  apiKey: MBTA_API_KEY,
-  onFacilities: (facilities) => {
-    stateManager.setFacilities(facilities);
-    wsBroadcaster.broadcastFacilities({ facilities: stateManager.getSnapshot().facilities });
-  },
-  onStatuses: (statuses) => {
-    stateManager.setFacilityStatuses(statuses);
-    wsBroadcaster.broadcastFacilities({ facilities: stateManager.getSnapshot().facilities });
-  },
-  onError: (err) => console.error('[Facility Poller] Error:', err),
-});
-
-const weatherPoller = new WeatherPoller({
-  onWeather: (weather) => {
-    stateManager.setWeather(weather);
-    wsBroadcaster.broadcastWeather({ weather });
-  },
-  onError: (err) => console.error('[Weather Poller] Error:', err),
-});
-
 async function start() {
   console.log('Loading GTFS shapes...');
   shapesCache = await loadShapes(MBTA_API_KEY);
@@ -190,12 +261,6 @@ async function start() {
 
   mbtaStream.start();
   console.log('MBTA SSE streams connected');
-
-  facilityPoller.start(60_000);
-  console.log('Facility poller started (60s interval)');
-
-  weatherPoller.start(900_000);
-  console.log('Weather poller started (15min interval)');
 
   server.listen(PORT, () => {
     console.log(`Backend running on http://localhost:${PORT}`);
@@ -205,8 +270,7 @@ async function start() {
   const shutdown = () => {
     console.log('Shutting down gracefully...');
     mbtaStream.stop();
-    facilityPoller.stop();
-    weatherPoller.stop();
+    wsBroadcaster.close();
     server.close(() => {
       console.log('Server closed');
       process.exit(0);
