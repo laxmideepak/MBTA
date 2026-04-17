@@ -15,6 +15,15 @@ interface SystemState {
   predictions: Record<string, Prediction[]>;
   alerts: Alert[];
   lastMessageTime: number;
+  /**
+   * Rough skew between server clock and client clock, in ms. Computed on
+   * `full-state` using `message.timestamp - Date.now()` and invalidated when
+   * the socket disconnects (server-origin stamps are worthless without a
+   * recent baseline). `useServerNow()` applies this offset to build a
+   * server-timeline clock usable for interpolating `lastDepartedAt` into
+   * progress-bar fractions.
+   */
+  serverOffsetMs: number | null;
 
   applyFullState: (snapshot: SystemSnapshot) => void;
 
@@ -95,6 +104,7 @@ export const useSystemStore = create<SystemState>((set) => ({
   predictions: {},
   alerts: [],
   lastMessageTime: 0,
+  serverOffsetMs: null,
 
   applyFullState: (snapshot) =>
     set({
@@ -127,11 +137,15 @@ export const useSystemStore = create<SystemState>((set) => ({
     switch (msg.type) {
       case 'full-state': {
         const snapshot = msg.data as SystemSnapshot;
+        // Rebaseline server clock offset on every full snapshot — this
+        // message arrives at connect (and again on reconnect), so it's a
+        // natural pin for drift correction.
         set({
           vehicles: snapshot.vehicles,
           predictions: snapshot.predictions,
           alerts: snapshot.alerts,
           lastMessageTime,
+          serverOffsetMs: msg.timestamp - Date.now(),
         });
         return;
       }
@@ -244,3 +258,24 @@ export const useSystemStore = create<SystemState>((set) => ({
     }
   },
 }));
+
+/**
+ * Build a server-clock `now()` function from the stored offset. Returns null
+ * while we have no offset (pre-connect or post-disconnect). The closure is
+ * stable across renders by virtue of being subscribed to `serverOffsetMs`
+ * only — consumers can call the returned getter on every animation frame
+ * without triggering re-renders.
+ */
+export function useServerNow(): () => number | null {
+  const offset = useSystemStore((s) => s.serverOffsetMs);
+  return () => (offset == null ? null : Date.now() + offset);
+}
+
+/**
+ * Invalidate the server clock offset. Call from the WebSocket close / error
+ * handler so stale server-origin timestamps don't continue driving
+ * progress-bar interpolation during a disconnect.
+ */
+export function resetServerOffset(): void {
+  useSystemStore.setState({ serverOffsetMs: null });
+}

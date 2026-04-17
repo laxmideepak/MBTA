@@ -4,21 +4,25 @@ import { ScatterplotLayer } from '@deck.gl/layers';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import maplibregl from 'maplibre-gl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useHoveredEntity } from '../hooks/useHoveredEntity';
 import { type StationHoverInfo, useMapLayers } from '../hooks/useMapLayers';
 import { useRouteData } from '../hooks/useRouteData';
 import { type TrainTrip, useTrainTrips } from '../hooks/useTrainTrips';
 import { StationTooltip } from '../overlays/StationTooltip';
 import { TrainTooltip } from '../overlays/TrainTooltip';
 import type { Alert, Prediction, Stop, Vehicle } from '../types';
+import { AMBER_DARKEN, BRAND_DARKEN_FACTOR, darkenRgb } from '../utils/color';
 import { createDebugWormTrip, isDebugTripsWormEnabled } from '../utils/debug-trips-worm';
 import { add3DBuildingLayer, getMapStyle } from '../utils/map-style';
 import { interpolateAlongPath } from '../utils/trip-geometry';
 
 const MAP_STYLE = getMapStyle();
 
-// Visible trail length (head → tail) in seconds of simulated travel.
-// Matches londonunderground.live comet feel without smearing at low speeds.
-const TRAIL_LENGTH_SECS = 45;
+// Visible trail length (head → tail) in seconds of simulated travel. Tuned to
+// match londonunderground.live comet density on the cream basemap — 25s reads
+// as a clear worm without smearing at low speeds or overlapping at high ones.
+// The core trail uses a shorter length (see below) to sharpen the head.
+const TRAIL_LENGTH_SECS = 25;
 
 // deck.gl 9 / luma.gl 9 rewrote GPU state to WebGPU-style keys. The equivalent
 // of the old `{ depthTest: false }` (from deck.gl 8) is "always pass depth, but
@@ -38,26 +42,22 @@ interface LiveMapProps {
   alerts: Alert[];
 }
 
-interface TrainHoverInfo {
-  x: number;
-  y: number;
-  trip: TrainTrip;
-}
-
 export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const overlayRef = useRef<MapboxOverlay | null>(null);
 
-  const [hoveredTrain, setHoveredTrain] = useState<TrainHoverInfo | null>(null);
+  // Unified hover state: at most one tooltip open at a time, last setter wins.
+  // `pinned` guards station hovers from replacing a pinned train tooltip.
+  const { hovered, setHoveredTrain, setHoveredStation, pin, unpin, pinned } = useHoveredEntity();
+
   // When a user taps / clicks a train the tooltip "pins" and stays open even
   // if they move the mouse away — vital for mobile (no hover) and for anyone
   // who wants to read future stops without holding the cursor perfectly still
-  // over the moving icon.
+  // over the moving icon. The hook's `pinned` flag handles station-suppression;
+  // we also track *which* train id + anchor pixel to park the tooltip at.
   const [pinnedTrainId, setPinnedTrainId] = useState<string | null>(null);
   const [pinnedTrainXY, setPinnedTrainXY] = useState<{ x: number; y: number } | null>(null);
-  const [hoveredStation, setHoveredStation] = useState<StationHoverInfo | null>(null);
-  const [hoverClockSec, setHoverClockSec] = useState(() => performance.now() / 1000);
   const [bearing, setBearing] = useState(-17.7);
   const [zoom, setZoom] = useState(12.4);
 
@@ -70,25 +70,65 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
   const anchorRef = useRef(anchorTimeSec);
   anchorRef.current = anchorTimeSec;
 
-  const handleStationHover = useCallback((info: StationHoverInfo | null) => {
-    setHoveredStation(info);
-  }, []);
+  // Map vehicles by id so the station hover path (which sees TrainTrip objects
+  // on the picking layer, not vehicles) can resolve the matching Vehicle.
+  const vehiclesById = useMemo(() => {
+    const m = new Map<string, Vehicle>();
+    for (const v of vehicles) m.set(v.id, v);
+    return m;
+  }, [vehicles]);
+  const vehiclesByIdRef = useRef(vehiclesById);
+  vehiclesByIdRef.current = vehiclesById;
 
-  const handleTrainHover = useCallback((info: PickingInfo) => {
-    if (info?.object) {
-      setHoveredTrain({ x: info.x, y: info.y, trip: info.object as TrainTrip });
-    } else {
+  const handleStationHover = useCallback(
+    (info: StationHoverInfo | null) => {
+      if (info?.object) {
+        setHoveredStation(info.object as Stop, [info.x, info.y]);
+      } else {
+        setHoveredStation(null);
+      }
+    },
+    [setHoveredStation],
+  );
+
+  const handleTrainHover = useCallback(
+    (info: PickingInfo) => {
+      if (info?.object) {
+        const trip = info.object as TrainTrip;
+        const vehicle = vehiclesByIdRef.current.get(trip.id);
+        if (vehicle) {
+          setHoveredTrain(vehicle, [info.x, info.y]);
+          return;
+        }
+      }
       setHoveredTrain(null);
-    }
-  }, []);
+    },
+    [setHoveredTrain],
+  );
 
-  const handleTrainClick = useCallback((info: PickingInfo) => {
-    if (!info?.object) return;
-    const trip = info.object as TrainTrip;
-    // Toggle: click same train to unpin, click different train to switch pin.
-    setPinnedTrainId((prev) => (prev === trip.id ? null : trip.id));
-    setPinnedTrainXY({ x: info.x, y: info.y });
-  }, []);
+  const handleTrainClick = useCallback(
+    (info: PickingInfo) => {
+      if (!info?.object) return;
+      const trip = info.object as TrainTrip;
+      // Toggle: click same train to unpin, click different train to switch pin.
+      setPinnedTrainId((prev) => {
+        const next = prev === trip.id ? null : trip.id;
+        if (next == null) {
+          unpin();
+        } else {
+          pin();
+          // Switching pin: reflect the new target in the hover slot so the
+          // TrainTooltip render switch picks it up even if the cursor already
+          // drifted off the icon between click and frame.
+          const vehicle = vehiclesByIdRef.current.get(trip.id);
+          if (vehicle) setHoveredTrain(vehicle, [info.x, info.y]);
+        }
+        return next;
+      });
+      setPinnedTrainXY({ x: info.x, y: info.y });
+    },
+    [pin, unpin, setHoveredTrain],
+  );
 
   const handleTrainHoverRef = useRef(handleTrainHover);
   handleTrainHoverRef.current = handleTrainHover;
@@ -99,7 +139,9 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
   const handleMapBlankClick = useCallback(() => {
     setPinnedTrainId(null);
     setPinnedTrainXY(null);
-  }, []);
+    unpin();
+    setHoveredTrain(null);
+  }, [unpin, setHoveredTrain]);
 
   const staticLayersRef = useMapLayers(routeShapes, stops, handleStationHover);
 
@@ -115,8 +157,10 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
       pitch: 45,
       bearing: -17.7,
       antialias: true,
+      // Couple right-click-drag rotate + pitch for london-style 3D orbit.
       dragRotate: true,
-      maxPitch: 60,
+      pitchWithRotate: true,
+      maxPitch: 85,
       maxZoom: 18,
     });
 
@@ -210,11 +254,22 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
           data,
           getPath: (d) => d.path,
           getTimestamps: (d) => d.timestamps,
-          getColor: (d) => d.colorGlow,
+          // Brand color darkened per-route so the halo reads as a warm saturated
+          // comet on cream rather than a neon primary. Alpha 96 (was 80) keeps
+          // the glow visible after the luminance drop from darkening.
+          getColor: (d) => {
+            const base = d.delayed
+              ? darkenRgb([255, 199, 44], AMBER_DARKEN)
+              : darkenRgb(
+                  [d.color[0], d.color[1], d.color[2]],
+                  BRAND_DARKEN_FACTOR[d.routeId] ?? 0.7,
+                );
+            return [base[0], base[1], base[2], 96];
+          },
           opacity: 1,
           widthUnits: 'pixels',
-          widthMinPixels: 4,
-          widthMaxPixels: 10,
+          widthMinPixels: 5,
+          widthMaxPixels: 9,
           getWidth: 6,
           capRounded: true,
           jointRounded: true,
@@ -233,15 +288,24 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
           data,
           getPath: (d) => d.path,
           getTimestamps: (d) => d.timestamps,
-          getColor: (d) => d.color,
+          // Same per-route darkening as the glow so head+trail read as a
+          // single object. Trail length is 10s (shorter than glow's 25s) to
+          // concentrate visual weight near the head and keep it hover-pickable.
+          getColor: (d) =>
+            d.delayed
+              ? darkenRgb([255, 199, 44], AMBER_DARKEN)
+              : darkenRgb(
+                  [d.color[0], d.color[1], d.color[2]],
+                  BRAND_DARKEN_FACTOR[d.routeId] ?? 0.7,
+                ),
           opacity: 1,
           widthUnits: 'pixels',
           widthMinPixels: 2,
-          widthMaxPixels: 5,
+          widthMaxPixels: 4,
           getWidth: 3,
           capRounded: true,
           jointRounded: true,
-          trailLength: TRAIL_LENGTH_SECS * 0.35,
+          trailLength: 10,
           currentTime: playbackT,
           fadeTrail: true,
           pickable: true,
@@ -268,8 +332,18 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
           id: 'trains-head',
           data,
           getPosition: (d) => interpolateAlongPath(d, playbackT),
-          getFillColor: (d) =>
-            d.delayed ? [255, 199, 44, 235] : [d.color[0], d.color[1], d.color[2], 235],
+          getFillColor: (d) => {
+            // Darken with the same per-route factor used by the trail layers
+            // so the head dot and its comet read as a single object. Outline
+            // stays the dark `[11, 18, 27, 220]` below for legibility on cream.
+            const base = d.delayed
+              ? darkenRgb([255, 199, 44], AMBER_DARKEN)
+              : darkenRgb(
+                  [d.color[0], d.color[1], d.color[2]],
+                  BRAND_DARKEN_FACTOR[d.routeId] ?? 0.7,
+                );
+            return [base[0], base[1], base[2], 235];
+          },
           getLineColor: [11, 18, 27, 220],
           stroked: true,
           filled: true,
@@ -349,48 +423,37 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
     };
   }, [handleMapBlankClick]);
 
-  useEffect(() => {
-    if (!hoveredTrain && !pinnedTrainId) return;
-    let timer = 0;
-    const tick = () => {
-      setHoverClockSec(performance.now() / 1000);
-      timer = window.setTimeout(tick, 100);
-    };
-    tick();
-    return () => window.clearTimeout(timer);
-  }, [hoveredTrain, pinnedTrainId]);
-
   // Pinned wins over hover so a tapped tooltip stays parked while the user
   // moves the cursor to read it. Re-resolve against the live trips list so
   // the pin follows updated positions as GPS fixes come in.
+  const hoveredTrainVehicle = hovered?.kind === 'train' ? hovered.vehicle : null;
+  const hoveredTrainPixel = hovered?.kind === 'train' ? hovered.pixel : null;
+
   const activeTrip = useMemo(() => {
     if (pinnedTrainId) {
       const match = trips.find((t) => t.id === pinnedTrainId);
       if (match) return match;
       // Fall through to hover if the pinned train fell out of the feed.
     }
-    if (!hoveredTrain) return null;
-    return trips.find((t) => t.id === hoveredTrain.trip.id) ?? hoveredTrain.trip;
-  }, [hoveredTrain, trips, pinnedTrainId]);
+    if (!hoveredTrainVehicle) return null;
+    return trips.find((t) => t.id === hoveredTrainVehicle.id) ?? null;
+  }, [hoveredTrainVehicle, trips, pinnedTrainId]);
 
   const activeAnchor = useMemo(() => {
     if (pinnedTrainId && pinnedTrainXY) return pinnedTrainXY;
-    if (hoveredTrain) return { x: hoveredTrain.x, y: hoveredTrain.y };
+    if (hoveredTrainPixel) return { x: hoveredTrainPixel[0], y: hoveredTrainPixel[1] };
     return null;
-  }, [pinnedTrainId, pinnedTrainXY, hoveredTrain]);
+  }, [pinnedTrainId, pinnedTrainXY, hoveredTrainPixel]);
 
   const isPinned = pinnedTrainId != null && activeTrip?.id === pinnedTrainId;
 
-  const activeStopPredictions: Prediction[] = activeTrip
-    ? (predictions[activeTrip.stopId] ?? [])
-    : [];
-
-  const activeProgress = useMemo(() => {
-    if (!activeTrip) return 0;
-    const elapsedSec = Math.max(0, hoverClockSec - anchorTimeSec);
-    const raw = (activeTrip.progress + activeTrip.progressVelocity * elapsedSec) * 100;
-    return Math.max(0, Math.min(100, raw));
-  }, [activeTrip, hoverClockSec, anchorTimeSec]);
+  // TrainTooltip now owns its own animation (useAnimationFrame + server clock)
+  // and pulls predictions from the store, so LiveMap only needs to hand it the
+  // current Vehicle. Look up by id so the tooltip follows live WS updates.
+  const activeVehicle: Vehicle | null = useMemo(() => {
+    if (!activeTrip) return null;
+    return vehicles.find((v) => v.id === activeTrip.id) ?? null;
+  }, [activeTrip, vehicles]);
 
   const handleZoomIn = useCallback(() => {
     mapRef.current?.zoomIn({ duration: 200 });
@@ -456,18 +519,11 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
           </span>
         </button>
       </div>
-      {activeTrip && activeAnchor && (
+      {activeTrip && activeAnchor && activeVehicle && (
         <TrainTooltip
           x={activeAnchor.x}
           y={activeAnchor.y}
-          routeId={activeTrip.routeId}
-          directionId={activeTrip.directionId}
-          stopId={activeTrip.stopId}
-          label={activeTrip.label}
-          currentStatus={activeTrip.currentStatus}
-          delayed={activeTrip.delayed}
-          predictions={activeStopPredictions}
-          progress={activeProgress}
+          vehicle={activeVehicle}
           origin={activeTrip.origin}
           destination={activeTrip.destination}
           futureStops={activeTrip.futureStops}
@@ -475,12 +531,8 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
           onClose={handleMapBlankClick}
         />
       )}
-      {hoveredStation && !activeTrip && (
-        <StationTooltip
-          x={hoveredStation.x}
-          y={hoveredStation.y}
-          stop={hoveredStation.object as Stop}
-        />
+      {hovered?.kind === 'station' && !pinned && !activeTrip && (
+        <StationTooltip stop={hovered.stop} pixel={hovered.pixel} />
       )}
     </div>
   );
