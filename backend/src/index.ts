@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import express from 'express';
+import { Coalescer } from './coalescer.js';
 import { loadShapes } from './gtfs-loader.js';
 import { withMbtaKey } from './mbta-api-url.js';
 import { parseSchedule } from './mbta-parser.js';
@@ -34,6 +35,7 @@ if (process.env.NODE_ENV === 'production') {
 const server = createServer(app);
 const stateManager = new StateManager();
 const wsBroadcaster = new WsBroadcaster(server, stateManager);
+const coalescer = new Coalescer(stateManager, wsBroadcaster);
 
 const startTime = Date.now();
 let lastSseEventTime = 0;
@@ -193,20 +195,14 @@ const mbtaStream = new MbtaStream({
     lastSseEventTime = Date.now();
     switch (event.type) {
       case 'reset':
-        stateManager.resetVehicles(event.data as Vehicle[]);
-        wsBroadcaster.broadcastVehicles({
-          type: 'reset',
-          vehicles: stateManager.getSnapshot().vehicles,
-        });
+        coalescer.resetVehicles(event.data as Vehicle[]);
         break;
       case 'add':
       case 'update':
-        stateManager.upsertVehicle(event.data as Vehicle);
-        wsBroadcaster.broadcastVehicles({ type: 'upsert', vehicle: event.data });
+        coalescer.upsertVehicle(event.data as Vehicle);
         break;
       case 'remove':
-        stateManager.removeVehicle(event.id);
-        wsBroadcaster.broadcastVehicles({ type: 'remove', id: event.id });
+        coalescer.removeVehicle(event.id);
         break;
     }
   },
@@ -214,20 +210,14 @@ const mbtaStream = new MbtaStream({
     lastSseEventTime = Date.now();
     switch (event.type) {
       case 'reset':
-        stateManager.resetPredictions(event.data as Prediction[]);
-        wsBroadcaster.broadcastPredictions({
-          type: 'reset',
-          predictions: stateManager.getSnapshot().predictions,
-        });
+        coalescer.resetPredictions(event.data as Prediction[]);
         break;
       case 'add':
       case 'update':
-        stateManager.upsertPrediction(event.data as Prediction);
-        wsBroadcaster.broadcastPredictions({ type: 'upsert', prediction: event.data });
+        coalescer.upsertPrediction(event.data as Prediction);
         break;
       case 'remove':
-        stateManager.removePredictionById(event.id);
-        wsBroadcaster.broadcastPredictions({ type: 'remove', id: event.id });
+        coalescer.removePrediction(event.id);
         break;
     }
   },
@@ -235,17 +225,14 @@ const mbtaStream = new MbtaStream({
     lastSseEventTime = Date.now();
     switch (event.type) {
       case 'reset':
-        stateManager.resetAlerts(event.data as Alert[]);
-        wsBroadcaster.broadcastAlerts({ type: 'reset', alerts: stateManager.getSnapshot().alerts });
+        coalescer.resetAlerts(event.data as Alert[]);
         break;
       case 'add':
       case 'update':
-        stateManager.upsertAlert(event.data as Alert);
-        wsBroadcaster.broadcastAlerts({ type: 'upsert', alert: event.data });
+        coalescer.upsertAlert(event.data as Alert);
         break;
       case 'remove':
-        stateManager.removeAlert(event.id);
-        wsBroadcaster.broadcastAlerts({ type: 'remove', id: event.id });
+        coalescer.removeAlert(event.id);
         break;
     }
   },
@@ -270,6 +257,7 @@ async function start() {
   const shutdown = () => {
     console.log('Shutting down gracefully...');
     mbtaStream.stop();
+    coalescer.close();
     wsBroadcaster.close();
     server.close(() => {
       console.log('Server closed');
