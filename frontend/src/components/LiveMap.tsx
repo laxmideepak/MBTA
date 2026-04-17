@@ -10,15 +10,18 @@ import { type TrainTrip, useTrainTrips } from '../hooks/useTrainTrips';
 import { StationTooltip } from '../overlays/StationTooltip';
 import { TrainTooltip } from '../overlays/TrainTooltip';
 import type { Alert, Prediction, Stop, Vehicle } from '../types';
+import { AMBER_DARKEN, BRAND_DARKEN_FACTOR, darkenRgb } from '../utils/color';
 import { createDebugWormTrip, isDebugTripsWormEnabled } from '../utils/debug-trips-worm';
 import { add3DBuildingLayer, getMapStyle } from '../utils/map-style';
 import { interpolateAlongPath } from '../utils/trip-geometry';
 
 const MAP_STYLE = getMapStyle();
 
-// Visible trail length (head → tail) in seconds of simulated travel.
-// Matches londonunderground.live comet feel without smearing at low speeds.
-const TRAIL_LENGTH_SECS = 45;
+// Visible trail length (head → tail) in seconds of simulated travel. Tuned to
+// match londonunderground.live comet density on the cream basemap — 25s reads
+// as a clear worm without smearing at low speeds or overlapping at high ones.
+// The core trail uses a shorter length (see below) to sharpen the head.
+const TRAIL_LENGTH_SECS = 25;
 
 // deck.gl 9 / luma.gl 9 rewrote GPU state to WebGPU-style keys. The equivalent
 // of the old `{ depthTest: false }` (from deck.gl 8) is "always pass depth, but
@@ -114,8 +117,10 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
       pitch: 45,
       bearing: -17.7,
       antialias: true,
+      // Couple right-click-drag rotate + pitch for london-style 3D orbit.
       dragRotate: true,
-      maxPitch: 60,
+      pitchWithRotate: true,
+      maxPitch: 85,
       maxZoom: 18,
     });
 
@@ -209,11 +214,22 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
           data,
           getPath: (d) => d.path,
           getTimestamps: (d) => d.timestamps,
-          getColor: (d) => d.colorGlow,
+          // Brand color darkened per-route so the halo reads as a warm saturated
+          // comet on cream rather than a neon primary. Alpha 96 (was 80) keeps
+          // the glow visible after the luminance drop from darkening.
+          getColor: (d) => {
+            const base = d.delayed
+              ? darkenRgb([255, 199, 44], AMBER_DARKEN)
+              : darkenRgb(
+                  [d.color[0], d.color[1], d.color[2]],
+                  BRAND_DARKEN_FACTOR[d.routeId] ?? 0.7,
+                );
+            return [base[0], base[1], base[2], 96];
+          },
           opacity: 1,
           widthUnits: 'pixels',
-          widthMinPixels: 4,
-          widthMaxPixels: 10,
+          widthMinPixels: 5,
+          widthMaxPixels: 9,
           getWidth: 6,
           capRounded: true,
           jointRounded: true,
@@ -232,15 +248,24 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
           data,
           getPath: (d) => d.path,
           getTimestamps: (d) => d.timestamps,
-          getColor: (d) => d.color,
+          // Same per-route darkening as the glow so head+trail read as a
+          // single object. Trail length is 10s (shorter than glow's 25s) to
+          // concentrate visual weight near the head and keep it hover-pickable.
+          getColor: (d) =>
+            d.delayed
+              ? darkenRgb([255, 199, 44], AMBER_DARKEN)
+              : darkenRgb(
+                  [d.color[0], d.color[1], d.color[2]],
+                  BRAND_DARKEN_FACTOR[d.routeId] ?? 0.7,
+                ),
           opacity: 1,
           widthUnits: 'pixels',
           widthMinPixels: 2,
-          widthMaxPixels: 5,
+          widthMaxPixels: 4,
           getWidth: 3,
           capRounded: true,
           jointRounded: true,
-          trailLength: TRAIL_LENGTH_SECS * 0.35,
+          trailLength: 10,
           currentTime: playbackT,
           fadeTrail: true,
           pickable: true,
@@ -267,8 +292,18 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
           id: 'trains-head',
           data,
           getPosition: (d) => interpolateAlongPath(d, playbackT),
-          getFillColor: (d) =>
-            d.delayed ? [255, 199, 44, 235] : [d.color[0], d.color[1], d.color[2], 235],
+          getFillColor: (d) => {
+            // Darken with the same per-route factor used by the trail layers
+            // so the head dot and its comet read as a single object. Outline
+            // stays the dark `[11, 18, 27, 220]` below for legibility on cream.
+            const base = d.delayed
+              ? darkenRgb([255, 199, 44], AMBER_DARKEN)
+              : darkenRgb(
+                  [d.color[0], d.color[1], d.color[2]],
+                  BRAND_DARKEN_FACTOR[d.routeId] ?? 0.7,
+                );
+            return [base[0], base[1], base[2], 235];
+          },
           getLineColor: [11, 18, 27, 220],
           stroked: true,
           filled: true,
