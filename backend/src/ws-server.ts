@@ -8,10 +8,14 @@ import type { WsMessage } from './types.js';
 // typed code and prevents accidental drift elsewhere.
 type LiveWebSocket = WebSocket & { isAlive: boolean };
 
+/** Application-level tick so clients can refresh `lastMessageTime` when MBTA is quiet. */
+const HEARTBEAT_INTERVAL_MS = 10_000;
+
 export class WsBroadcaster {
   private wss: WebSocketServer;
   private stateManager: StateManager;
   private pingIntervalId: ReturnType<typeof setInterval> | null = null;
+  private heartbeatIntervalId: ReturnType<typeof setInterval> | null = null;
 
   constructor(server: Server, stateManager: StateManager) {
     this.stateManager = stateManager;
@@ -48,6 +52,10 @@ export class WsBroadcaster {
         } catch {}
       }
     }, 25_000);
+
+    this.heartbeatIntervalId = setInterval(() => {
+      this.broadcast({ type: 'heartbeat', data: null, timestamp: Date.now() });
+    }, HEARTBEAT_INTERVAL_MS);
   }
 
   broadcast(message: WsMessage): void {
@@ -75,6 +83,10 @@ export class WsBroadcaster {
     if (this.pingIntervalId) {
       clearInterval(this.pingIntervalId);
       this.pingIntervalId = null;
+    }
+    if (this.heartbeatIntervalId) {
+      clearInterval(this.heartbeatIntervalId);
+      this.heartbeatIntervalId = null;
     }
     this.wss.close();
   }

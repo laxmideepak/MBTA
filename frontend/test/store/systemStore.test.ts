@@ -199,6 +199,20 @@ describe('useSystemStore', () => {
       expect(useSystemStore.getState().lastMessageTime).toBeGreaterThan(before);
     });
 
+    it('heartbeat only bumps lastMessageTime', () => {
+      useSystemStore.getState().upsertVehicle(mkVehicle({ id: 'v1' }));
+      const before = useSystemStore.getState().lastMessageTime;
+      useSystemStore.getState().handleWsMessage({
+        type: 'heartbeat',
+        timestamp: 1_700_000_000_000,
+        data: null,
+      });
+      const s = useSystemStore.getState();
+      expect(s.lastMessageTime).toBeGreaterThan(before);
+      expect(s.vehicles).toHaveLength(1);
+      expect(s.vehicles[0].id).toBe('v1');
+    });
+
     it('drops malformed messages without throwing', () => {
       expect(() => {
         useSystemStore

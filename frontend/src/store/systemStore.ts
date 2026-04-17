@@ -182,6 +182,10 @@ export const useSystemStore = create<SystemState>((set) => ({
         }
         return;
       }
+      case 'heartbeat': {
+        set({ lastMessageTime });
+        return;
+      }
     }
   },
 }));
