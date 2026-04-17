@@ -11,6 +11,17 @@ export interface Vehicle {
   label: string;
   tripId: string;
   updatedAt: string;
+  routeColor?: string | null;
+  currentStopName?: string | null;
+  destination?: string | null;
+  nextStops?: NextStop[];
+}
+
+export interface NextStop {
+  stopId: string;
+  stopName: string;
+  etaSec: number;
+  status: string | null;
 }
 
 export interface Prediction {
@@ -87,7 +98,12 @@ export interface SystemSnapshot {
   alerts: Alert[];
 }
 
-type WsMessageType = 'full-state' | 'vehicles-update' | 'predictions-update' | 'alerts-update';
+type WsMessageType =
+  | 'full-state'
+  | 'vehicles-update'
+  | 'predictions-update'
+  | 'alerts-update'
+  | 'heartbeat';
 export interface WsMessage {
   type: WsMessageType;
   data: any;

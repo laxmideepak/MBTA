@@ -197,11 +197,31 @@ const mbtaStream = new MbtaStream({
     lastSseEventTime = Date.now();
     switch (event.type) {
       case 'reset':
-        coalescer.resetVehicles(event.data as Vehicle[]);
+        coalescer.resetVehicles(
+          (event.data as Vehicle[]).map((v) => {
+            const snap = referenceData.getSnapshot();
+            if (!snap) return v;
+            const stopName = snap.stops.get(v.stopId)?.name ?? null;
+            const routeColor = snap.routes.get(v.routeId)?.color ?? null;
+            const destination = snap.trips.get(v.tripId)?.headsign ?? null;
+            return { ...v, currentStopName: stopName, routeColor, destination };
+          }),
+        );
         break;
       case 'add':
       case 'update':
-        coalescer.upsertVehicle(event.data as Vehicle);
+        (() => {
+          const v = event.data as Vehicle;
+          const snap = referenceData.getSnapshot();
+          if (!snap) {
+            coalescer.upsertVehicle(v);
+            return;
+          }
+          const stopName = snap.stops.get(v.stopId)?.name ?? null;
+          const routeColor = snap.routes.get(v.routeId)?.color ?? null;
+          const destination = snap.trips.get(v.tripId)?.headsign ?? null;
+          coalescer.upsertVehicle({ ...v, currentStopName: stopName, routeColor, destination });
+        })();
         break;
       case 'remove':
         coalescer.removeVehicle(event.id);

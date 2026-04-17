@@ -14,6 +14,26 @@ export interface Vehicle {
    *  remaining-stops sequence in `predictions` by `tripId`. */
   tripId: string;
   updatedAt: string;
+  /**
+   * Server-side reference enrichment — convenience fields so the client can
+   * render without joining on `/stops` + `/routes` + `/trips` locally.
+   */
+  routeColor?: string | null;
+  currentStopName?: string | null;
+  destination?: string | null;
+  /**
+   * Server-side derived slice: next predicted stops for this vehicle's trip.
+   * Optional so older clients can ignore it.
+   */
+  nextStops?: NextStop[];
+}
+
+export interface NextStop {
+  stopId: string;
+  stopName: string;
+  /** ETA in seconds from serverTime when computed. */
+  etaSec: number;
+  status: string | null;
 }
 
 export interface Prediction {
@@ -105,7 +125,8 @@ export type WsMessageType =
   | 'full-state'
   | 'vehicles-update'
   | 'predictions-update'
-  | 'alerts-update';
+  | 'alerts-update'
+  | 'heartbeat';
 
 export interface WsMessage {
   type: WsMessageType;
