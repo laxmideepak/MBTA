@@ -116,6 +116,7 @@ MBTA/
 ### Task 1: Environment Setup
 
 **Files:**
+
 - Create: `package.json` (root)
 - Create: `tsconfig.base.json`
 - Create: `.gitignore`
@@ -126,8 +127,7 @@ MBTA/
 - Create: `frontend/tsconfig.json`
 - Create: `frontend/vite.config.ts`
 - Create: `frontend/index.html`
-
-- [ ] **Step 1: Install Node.js via nvm**
+- **Step 1: Install Node.js via nvm**
 
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
@@ -138,7 +138,7 @@ nvm use 20
 node --version  # Expected: v20.x.x
 ```
 
-- [ ] **Step 2: Initialize root workspace**
+- **Step 2: Initialize root workspace**
 
 ```bash
 cd ~/MBTA
@@ -199,7 +199,7 @@ MBTA_API_KEY=your_mbta_api_key_here
 MAPTILER_API_KEY=your_maptiler_api_key_here
 ```
 
-- [ ] **Step 3: Scaffold backend package**
+- **Step 3: Scaffold backend package**
 
 Write `backend/package.json`:
 
@@ -247,7 +247,7 @@ Write `backend/tsconfig.json`:
 }
 ```
 
-- [ ] **Step 4: Scaffold frontend package**
+- **Step 4: Scaffold frontend package**
 
 Write `frontend/package.json`:
 
@@ -346,7 +346,7 @@ Write `frontend/index.html`:
 </html>
 ```
 
-- [ ] **Step 5: Install dependencies**
+- **Step 5: Install dependencies**
 
 ```bash
 cd ~/MBTA
@@ -355,7 +355,7 @@ npm install
 
 Expected: `node_modules/` created at root with hoisted deps.
 
-- [ ] **Step 6: Verify both workspaces compile**
+- **Step 6: Verify both workspaces compile**
 
 ```bash
 cd ~/MBTA
@@ -363,7 +363,7 @@ npx --workspace=backend tsc --noEmit --pretty 2>&1 | head -5
 # Expected: no errors (no source files yet, clean exit)
 ```
 
-- [ ] **Step 7: Commit**
+- **Step 7: Commit**
 
 ```bash
 cd ~/MBTA
@@ -376,9 +376,9 @@ git commit -m "chore: scaffold monorepo with backend + frontend workspaces"
 ### Task 2: Backend Types
 
 **Files:**
-- Create: `backend/src/types.ts`
 
-- [ ] **Step 1: Write the shared backend types**
+- Create: `backend/src/types.ts`
+- **Step 1: Write the shared backend types**
 
 These types match the MBTA V3 API response structures we'll parse into.
 
@@ -496,7 +496,7 @@ export interface MbtaSseEvent {
 }
 ```
 
-- [ ] **Step 2: Verify types compile**
+- **Step 2: Verify types compile**
 
 ```bash
 cd ~/MBTA
@@ -505,7 +505,7 @@ npx --workspace=backend tsc --noEmit
 
 Expected: clean exit, no errors.
 
-- [ ] **Step 3: Commit**
+- **Step 3: Commit**
 
 ```bash
 git add backend/src/types.ts
@@ -517,10 +517,10 @@ git commit -m "feat(backend): add shared type definitions for MBTA data"
 ### Task 3: MBTA JSON:API Parser
 
 **Files:**
+
 - Create: `backend/src/mbta-parser.ts`
 - Create: `backend/test/mbta-parser.test.ts`
-
-- [ ] **Step 1: Write the failing tests**
+- **Step 1: Write the failing tests**
 
 ```typescript
 // backend/test/mbta-parser.test.ts
@@ -778,7 +778,7 @@ describe('parseFacility', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- **Step 2: Run tests to verify they fail**
 
 ```bash
 cd ~/MBTA
@@ -787,7 +787,7 @@ npm test --workspace=backend
 
 Expected: FAIL — cannot find module `../src/mbta-parser.js`
 
-- [ ] **Step 3: Write the parser implementation**
+- **Step 3: Write the parser implementation**
 
 ```typescript
 // backend/src/mbta-parser.ts
@@ -869,7 +869,7 @@ export function parseFacility(resource: MbtaResource): Facility {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- **Step 4: Run tests to verify they pass**
 
 ```bash
 cd ~/MBTA
@@ -878,7 +878,7 @@ npm test --workspace=backend
 
 Expected: all 5 tests pass.
 
-- [ ] **Step 5: Commit**
+- **Step 5: Commit**
 
 ```bash
 git add backend/src/mbta-parser.ts backend/test/mbta-parser.test.ts
@@ -890,10 +890,10 @@ git commit -m "feat(backend): add MBTA JSON:API response parsers with tests"
 ### Task 4: State Manager
 
 **Files:**
+
 - Create: `backend/src/state-manager.ts`
 - Create: `backend/test/state-manager.test.ts`
-
-- [ ] **Step 1: Write the failing tests**
+- **Step 1: Write the failing tests**
 
 ```typescript
 // backend/test/state-manager.test.ts
@@ -1053,7 +1053,7 @@ describe('StateManager', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- **Step 2: Run tests to verify they fail**
 
 ```bash
 cd ~/MBTA
@@ -1062,7 +1062,7 @@ npm test --workspace=backend
 
 Expected: FAIL — cannot find `../src/state-manager.js`
 
-- [ ] **Step 3: Write the state manager implementation**
+- **Step 3: Write the state manager implementation**
 
 ```typescript
 // backend/src/state-manager.ts
@@ -1210,7 +1210,7 @@ export class StateManager {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- **Step 4: Run tests to verify they pass**
 
 ```bash
 cd ~/MBTA
@@ -1219,7 +1219,7 @@ npm test --workspace=backend
 
 Expected: all 9 tests pass.
 
-- [ ] **Step 5: Commit**
+- **Step 5: Commit**
 
 ```bash
 git add backend/src/state-manager.ts backend/test/state-manager.test.ts
@@ -1231,10 +1231,10 @@ git commit -m "feat(backend): add state manager with vehicle/prediction/alert CR
 ### Task 5: GTFS Polyline Decoder
 
 **Files:**
+
 - Create: `backend/src/gtfs-loader.ts`
 - Create: `backend/test/gtfs-loader.test.ts`
-
-- [ ] **Step 1: Write the failing tests**
+- **Step 1: Write the failing tests**
 
 ```typescript
 // backend/test/gtfs-loader.test.ts
@@ -1262,7 +1262,7 @@ describe('decodePolyline', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- **Step 2: Run tests to verify they fail**
 
 ```bash
 cd ~/MBTA
@@ -1271,7 +1271,7 @@ npm test --workspace=backend
 
 Expected: FAIL
 
-- [ ] **Step 3: Write the polyline decoder and GTFS loader**
+- **Step 3: Write the polyline decoder and GTFS loader**
 
 ```typescript
 // backend/src/gtfs-loader.ts
@@ -1347,7 +1347,7 @@ export async function loadShapes(apiKey: string): Promise<Map<string, RouteShape
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- **Step 4: Run tests to verify they pass**
 
 ```bash
 cd ~/MBTA
@@ -1356,7 +1356,7 @@ npm test --workspace=backend
 
 Expected: all polyline decoder tests pass.
 
-- [ ] **Step 5: Commit**
+- **Step 5: Commit**
 
 ```bash
 git add backend/src/gtfs-loader.ts backend/test/gtfs-loader.test.ts
@@ -1368,9 +1368,9 @@ git commit -m "feat(backend): add Google polyline decoder and GTFS shape loader"
 ### Task 6: MBTA SSE Stream Client
 
 **Files:**
-- Create: `backend/src/mbta-stream.ts`
 
-- [ ] **Step 1: Write the SSE stream client**
+- Create: `backend/src/mbta-stream.ts`
+- **Step 1: Write the SSE stream client**
 
 This module connects to the MBTA V3 SSE endpoints and emits parsed events. It's tested via integration (connecting to the real API in dev) rather than unit tests, since it's primarily I/O glue.
 
@@ -1477,7 +1477,7 @@ export class MbtaStream {
 }
 ```
 
-- [ ] **Step 2: Verify types compile**
+- **Step 2: Verify types compile**
 
 ```bash
 cd ~/MBTA
@@ -1486,7 +1486,7 @@ npx --workspace=backend tsc --noEmit
 
 Expected: clean exit.
 
-- [ ] **Step 3: Commit**
+- **Step 3: Commit**
 
 ```bash
 git add backend/src/mbta-stream.ts
@@ -1498,10 +1498,10 @@ git commit -m "feat(backend): add MBTA SSE stream client for vehicles/prediction
 ### Task 7: Facility Poller
 
 **Files:**
+
 - Create: `backend/src/facility-poller.ts`
 - Create: `backend/test/facility-poller.test.ts`
-
-- [ ] **Step 1: Write the failing test**
+- **Step 1: Write the failing test**
 
 ```typescript
 // backend/test/facility-poller.test.ts
@@ -1567,7 +1567,7 @@ describe('parseFacilityStatusFromApi', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- **Step 2: Run tests to verify they fail**
 
 ```bash
 cd ~/MBTA
@@ -1576,7 +1576,7 @@ npm test --workspace=backend
 
 Expected: FAIL
 
-- [ ] **Step 3: Write the facility poller**
+- **Step 3: Write the facility poller**
 
 ```typescript
 // backend/src/facility-poller.ts
@@ -1652,7 +1652,7 @@ export class FacilityPoller {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- **Step 4: Run tests to verify they pass**
 
 ```bash
 cd ~/MBTA
@@ -1661,7 +1661,7 @@ npm test --workspace=backend
 
 Expected: all facility poller tests pass.
 
-- [ ] **Step 5: Commit**
+- **Step 5: Commit**
 
 ```bash
 git add backend/src/facility-poller.ts backend/test/facility-poller.test.ts
@@ -1673,9 +1673,9 @@ git commit -m "feat(backend): add facility status poller with parser"
 ### Task 8: Weather Poller
 
 **Files:**
-- Create: `backend/src/weather-poller.ts`
 
-- [ ] **Step 1: Write the weather poller**
+- Create: `backend/src/weather-poller.ts`
+- **Step 1: Write the weather poller**
 
 The NWS API is free and simple. No unit test needed — this is pure HTTP glue.
 
@@ -1742,7 +1742,7 @@ export class WeatherPoller {
 }
 ```
 
-- [ ] **Step 2: Verify types compile**
+- **Step 2: Verify types compile**
 
 ```bash
 cd ~/MBTA
@@ -1751,7 +1751,7 @@ npx --workspace=backend tsc --noEmit
 
 Expected: clean exit.
 
-- [ ] **Step 3: Commit**
+- **Step 3: Commit**
 
 ```bash
 git add backend/src/weather-poller.ts
@@ -1763,9 +1763,9 @@ git commit -m "feat(backend): add NWS weather poller for Boston area"
 ### Task 9: WebSocket Server
 
 **Files:**
-- Create: `backend/src/ws-server.ts`
 
-- [ ] **Step 1: Write the WebSocket fan-out server**
+- Create: `backend/src/ws-server.ts`
+- **Step 1: Write the WebSocket fan-out server**
 
 ```typescript
 // backend/src/ws-server.ts
@@ -1845,7 +1845,7 @@ export class WsBroadcaster {
 }
 ```
 
-- [ ] **Step 2: Verify types compile**
+- **Step 2: Verify types compile**
 
 ```bash
 cd ~/MBTA
@@ -1854,7 +1854,7 @@ npx --workspace=backend tsc --noEmit
 
 Expected: clean exit.
 
-- [ ] **Step 3: Commit**
+- **Step 3: Commit**
 
 ```bash
 git add backend/src/ws-server.ts
@@ -1866,9 +1866,9 @@ git commit -m "feat(backend): add WebSocket broadcaster for client fan-out"
 ### Task 10: Backend Entry Point — Wire Everything Together
 
 **Files:**
-- Create: `backend/src/index.ts`
 
-- [ ] **Step 1: Write the Express server that wires all components**
+- Create: `backend/src/index.ts`
+- **Step 1: Write the Express server that wires all components**
 
 ```typescript
 // backend/src/index.ts
@@ -2052,7 +2052,7 @@ start().catch((err) => {
 });
 ```
 
-- [ ] **Step 2: Verify types compile**
+- **Step 2: Verify types compile**
 
 ```bash
 cd ~/MBTA
@@ -2061,7 +2061,7 @@ npx --workspace=backend tsc --noEmit
 
 Expected: clean exit.
 
-- [ ] **Step 3: Commit**
+- **Step 3: Commit**
 
 ```bash
 git add backend/src/index.ts
@@ -2075,10 +2075,10 @@ git commit -m "feat(backend): wire up Express server with SSE streams, pollers, 
 ### Task 11: Frontend Types + MBTA Colors
 
 **Files:**
+
 - Create: `frontend/src/types.ts`
 - Create: `frontend/src/utils/mbta-colors.ts`
-
-- [ ] **Step 1: Write shared frontend types**
+- **Step 1: Write shared frontend types**
 
 ```typescript
 // frontend/src/types.ts
@@ -2190,7 +2190,7 @@ export interface Stop {
 }
 ```
 
-- [ ] **Step 2: Write MBTA colors utility**
+- **Step 2: Write MBTA colors utility**
 
 ```typescript
 // frontend/src/utils/mbta-colors.ts
@@ -2244,7 +2244,7 @@ export const ALL_ROUTE_IDS = [
 ];
 ```
 
-- [ ] **Step 3: Commit**
+- **Step 3: Commit**
 
 ```bash
 git add frontend/src/types.ts frontend/src/utils/mbta-colors.ts
@@ -2256,12 +2256,12 @@ git commit -m "feat(frontend): add shared types and MBTA color constants"
 ### Task 12: Polyline Decoder + Time Formatter Utilities
 
 **Files:**
+
 - Create: `frontend/src/utils/polyline-decoder.ts`
 - Create: `frontend/src/utils/time-format.ts`
 - Create: `frontend/test/utils/polyline-decoder.test.ts`
 - Create: `frontend/test/utils/time-format.test.ts`
-
-- [ ] **Step 1: Write the failing tests**
+- **Step 1: Write the failing tests**
 
 ```typescript
 // frontend/test/utils/polyline-decoder.test.ts
@@ -2329,7 +2329,7 @@ describe('formatArrival', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- **Step 2: Run tests to verify they fail**
 
 ```bash
 cd ~/MBTA
@@ -2338,7 +2338,7 @@ npm test --workspace=frontend
 
 Expected: FAIL
 
-- [ ] **Step 3: Write the implementations**
+- **Step 3: Write the implementations**
 
 ```typescript
 // frontend/src/utils/polyline-decoder.ts
@@ -2402,7 +2402,7 @@ export function formatArrival(arrivalTime: string | null, status: string | null)
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- **Step 4: Run tests to verify they pass**
 
 ```bash
 cd ~/MBTA
@@ -2411,7 +2411,7 @@ npm test --workspace=frontend
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Commit**
+- **Step 5: Commit**
 
 ```bash
 git add frontend/src/utils/polyline-decoder.ts frontend/src/utils/time-format.ts frontend/test/utils/
@@ -2423,12 +2423,12 @@ git commit -m "feat(frontend): add polyline decoder and time formatting utilitie
 ### Task 13: Snap-to-Route + Trail Builder Utilities
 
 **Files:**
+
 - Create: `frontend/src/utils/snap-to-route.ts`
 - Create: `frontend/src/utils/trail-builder.ts`
 - Create: `frontend/test/utils/snap-to-route.test.ts`
 - Create: `frontend/test/utils/trail-builder.test.ts`
-
-- [ ] **Step 1: Write the failing tests**
+- **Step 1: Write the failing tests**
 
 ```typescript
 // frontend/test/utils/snap-to-route.test.ts
@@ -2510,7 +2510,7 @@ describe('buildTrail', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- **Step 2: Run tests to verify they fail**
 
 ```bash
 cd ~/MBTA
@@ -2519,7 +2519,7 @@ npm test --workspace=frontend
 
 Expected: FAIL
 
-- [ ] **Step 3: Write the implementations**
+- **Step 3: Write the implementations**
 
 ```typescript
 // frontend/src/utils/snap-to-route.ts
@@ -2579,7 +2579,7 @@ export function buildTrail(
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- **Step 4: Run tests to verify they pass**
 
 ```bash
 cd ~/MBTA
@@ -2588,7 +2588,7 @@ npm test --workspace=frontend
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Commit**
+- **Step 5: Commit**
 
 ```bash
 git add frontend/src/utils/snap-to-route.ts frontend/src/utils/trail-builder.ts frontend/test/utils/
@@ -2600,10 +2600,10 @@ git commit -m "feat(frontend): add snap-to-route and trail builder utilities wit
 ### Task 14: WebSocket Hook + System State Hook
 
 **Files:**
+
 - Create: `frontend/src/hooks/useWebSocket.ts`
 - Create: `frontend/src/hooks/useSystemState.ts`
-
-- [ ] **Step 1: Write the WebSocket connection hook**
+- **Step 1: Write the WebSocket connection hook**
 
 ```typescript
 // frontend/src/hooks/useWebSocket.ts
@@ -2668,7 +2668,7 @@ export function useWebSocket({ url, onMessage, reconnectInterval = 3000 }: UseWe
 }
 ```
 
-- [ ] **Step 2: Write the system state hook**
+- **Step 2: Write the system state hook**
 
 ```typescript
 // frontend/src/hooks/useSystemState.ts
@@ -2773,7 +2773,7 @@ export function useSystemState() {
 }
 ```
 
-- [ ] **Step 3: Verify types compile**
+- **Step 3: Verify types compile**
 
 ```bash
 cd ~/MBTA
@@ -2782,7 +2782,7 @@ npx --workspace=frontend tsc --noEmit
 
 Expected: clean exit.
 
-- [ ] **Step 4: Commit**
+- **Step 4: Commit**
 
 ```bash
 git add frontend/src/hooks/
@@ -2794,11 +2794,11 @@ git commit -m "feat(frontend): add WebSocket and system state hooks"
 ### Task 15: Global Styles + Dark Theme
 
 **Files:**
+
 - Create: `frontend/src/styles/global.css`
 - Create: `frontend/src/styles/nav.css`
 - Create: `frontend/src/styles/tooltip.css`
-
-- [ ] **Step 1: Write the dark theme styles**
+- **Step 1: Write the dark theme styles**
 
 ```css
 /* frontend/src/styles/global.css */
@@ -3018,7 +3018,7 @@ body {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- **Step 2: Commit**
 
 ```bash
 git add frontend/src/styles/
@@ -3030,10 +3030,10 @@ git commit -m "feat(frontend): add dark theme global styles, nav, and tooltip CS
 ### Task 16: NavBar + LiveIndicator Components
 
 **Files:**
+
 - Create: `frontend/src/components/NavBar.tsx`
 - Create: `frontend/src/components/LiveIndicator.tsx`
-
-- [ ] **Step 1: Write the LiveIndicator component**
+- **Step 1: Write the LiveIndicator component**
 
 ```typescript
 // frontend/src/components/LiveIndicator.tsx
@@ -3080,7 +3080,7 @@ export const LiveIndicator: FC<LiveIndicatorProps> = ({ connected }) => (
 );
 ```
 
-- [ ] **Step 2: Write the NavBar component**
+- **Step 2: Write the NavBar component**
 
 ```typescript
 // frontend/src/components/NavBar.tsx
@@ -3139,7 +3139,7 @@ export const NavBar: FC<NavBarProps> = ({
 );
 ```
 
-- [ ] **Step 3: Verify types compile**
+- **Step 3: Verify types compile**
 
 ```bash
 cd ~/MBTA
@@ -3148,7 +3148,7 @@ npx --workspace=frontend tsc --noEmit
 
 Expected: clean exit.
 
-- [ ] **Step 4: Commit**
+- **Step 4: Commit**
 
 ```bash
 git add frontend/src/components/NavBar.tsx frontend/src/components/LiveIndicator.tsx
@@ -3160,10 +3160,10 @@ git commit -m "feat(frontend): add NavBar and LiveIndicator components"
 ### Task 17: deck.gl Map Layers — Routes + Stations
 
 **Files:**
+
 - Create: `frontend/src/layers/RouteLayer.ts`
 - Create: `frontend/src/layers/StationLayer.ts`
-
-- [ ] **Step 1: Write the RouteLayer**
+- **Step 1: Write the RouteLayer**
 
 ```typescript
 // frontend/src/layers/RouteLayer.ts
@@ -3192,7 +3192,7 @@ export function createRouteLayer(routes: RoutePathData[]) {
 }
 ```
 
-- [ ] **Step 2: Write the StationLayer**
+- **Step 2: Write the StationLayer**
 
 ```typescript
 // frontend/src/layers/StationLayer.ts
@@ -3229,7 +3229,7 @@ export function createStationLayer(
 }
 ```
 
-- [ ] **Step 3: Commit**
+- **Step 3: Commit**
 
 ```bash
 git add frontend/src/layers/
@@ -3241,10 +3241,10 @@ git commit -m "feat(frontend): add route path and station dot deck.gl layers"
 ### Task 18: Train Layer — Animated Polyline Trails
 
 **Files:**
+
 - Create: `frontend/src/layers/TrainLayer.ts`
 - Create: `frontend/src/hooks/useTrainPositions.ts`
-
-- [ ] **Step 1: Write the useTrainPositions hook**
+- **Step 1: Write the useTrainPositions hook**
 
 This hook snaps vehicle GPS positions to route shapes and builds trail segments.
 
@@ -3307,7 +3307,7 @@ export function useTrainPositions(
 }
 ```
 
-- [ ] **Step 2: Write the TrainLayer**
+- **Step 2: Write the TrainLayer**
 
 ```typescript
 // frontend/src/layers/TrainLayer.ts
@@ -3336,7 +3336,7 @@ export function createTrainLayer(trains: TrainTrailData[]) {
 }
 ```
 
-- [ ] **Step 3: Commit**
+- **Step 3: Commit**
 
 ```bash
 git add frontend/src/layers/TrainLayer.ts frontend/src/hooks/useTrainPositions.ts
@@ -3348,9 +3348,9 @@ git commit -m "feat(frontend): add animated train trail layer with route snappin
 ### Task 19: Train Tooltip Overlay
 
 **Files:**
-- Create: `frontend/src/overlays/TrainTooltip.tsx`
 
-- [ ] **Step 1: Write the train tooltip**
+- Create: `frontend/src/overlays/TrainTooltip.tsx`
+- **Step 1: Write the train tooltip**
 
 ```typescript
 // frontend/src/overlays/TrainTooltip.tsx
@@ -3427,7 +3427,7 @@ export const TrainTooltip: FC<TrainTooltipProps> = ({
 };
 ```
 
-- [ ] **Step 2: Commit**
+- **Step 2: Commit**
 
 ```bash
 git add frontend/src/overlays/TrainTooltip.tsx
@@ -3439,9 +3439,9 @@ git commit -m "feat(frontend): add train hover tooltip overlay"
 ### Task 20: LiveMap Component — Wire Map + All Layers
 
 **Files:**
-- Create: `frontend/src/components/LiveMap.tsx`
 
-- [ ] **Step 1: Write the main map component**
+- Create: `frontend/src/components/LiveMap.tsx`
+- **Step 1: Write the main map component**
 
 ```typescript
 // frontend/src/components/LiveMap.tsx
@@ -3600,7 +3600,7 @@ export function LiveMap({
 }
 ```
 
-- [ ] **Step 2: Commit**
+- **Step 2: Commit**
 
 ```bash
 git add frontend/src/components/LiveMap.tsx
@@ -3612,10 +3612,10 @@ git commit -m "feat(frontend): add LiveMap component with deck.gl layers and hov
 ### Task 21: App Shell + Entry Point
 
 **Files:**
+
 - Create: `frontend/src/components/App.tsx`
 - Create: `frontend/src/main.tsx`
-
-- [ ] **Step 1: Write the App component**
+- **Step 1: Write the App component**
 
 ```typescript
 // frontend/src/components/App.tsx
@@ -3661,7 +3661,7 @@ export function App() {
 }
 ```
 
-- [ ] **Step 2: Write the entry point**
+- **Step 2: Write the entry point**
 
 ```typescript
 // frontend/src/main.tsx
@@ -3676,7 +3676,7 @@ createRoot(document.getElementById('root')!).render(
 );
 ```
 
-- [ ] **Step 3: Verify frontend compiles**
+- **Step 3: Verify frontend compiles**
 
 ```bash
 cd ~/MBTA
@@ -3685,7 +3685,7 @@ npx --workspace=frontend tsc --noEmit
 
 Expected: clean exit (may have minor type issues to resolve with deck.gl — fix any that arise).
 
-- [ ] **Step 4: Commit**
+- **Step 4: Commit**
 
 ```bash
 git add frontend/src/components/App.tsx frontend/src/main.tsx
@@ -3699,9 +3699,9 @@ git commit -m "feat(frontend): add App shell with map view and nav wiring"
 ### Task 22: Station Popup Overlay
 
 **Files:**
-- Create: `frontend/src/overlays/StationPopup.tsx`
 
-- [ ] **Step 1: Write the station popup**
+- Create: `frontend/src/overlays/StationPopup.tsx`
+- **Step 1: Write the station popup**
 
 ```typescript
 // frontend/src/overlays/StationPopup.tsx
@@ -3825,7 +3825,7 @@ export const StationPopup: FC<StationPopupProps> = ({
 };
 ```
 
-- [ ] **Step 2: Commit**
+- **Step 2: Commit**
 
 ```bash
 git add frontend/src/overlays/StationPopup.tsx
@@ -3837,14 +3837,14 @@ git commit -m "feat(frontend): add station popup with arrivals and facility stat
 ### Task 23: Departure Board View
 
 **Files:**
+
 - Create: `frontend/src/styles/board.css`
 - Create: `frontend/src/board/BoardHeader.tsx`
 - Create: `frontend/src/board/BoardLine.tsx`
 - Create: `frontend/src/board/BoardAlerts.tsx`
 - Create: `frontend/src/components/DepartureBoard.tsx`
 - Create: `frontend/src/hooks/useGeolocation.ts`
-
-- [ ] **Step 1: Write the board CSS**
+- **Step 1: Write the board CSS**
 
 ```css
 /* frontend/src/styles/board.css */
@@ -3950,7 +3950,7 @@ git commit -m "feat(frontend): add station popup with arrivals and facility stat
 }
 ```
 
-- [ ] **Step 2: Write the geolocation hook**
+- **Step 2: Write the geolocation hook**
 
 ```typescript
 // frontend/src/hooks/useGeolocation.ts
@@ -3984,7 +3984,7 @@ export function useGeolocation() {
 }
 ```
 
-- [ ] **Step 3: Write the BoardHeader**
+- **Step 3: Write the BoardHeader**
 
 ```typescript
 // frontend/src/board/BoardHeader.tsx
@@ -4018,7 +4018,7 @@ export const BoardHeader: FC<BoardHeaderProps> = ({ selectedStop, stops, onSelec
 );
 ```
 
-- [ ] **Step 4: Write the BoardLine**
+- **Step 4: Write the BoardLine**
 
 ```typescript
 // frontend/src/board/BoardLine.tsx
@@ -4080,7 +4080,7 @@ export const BoardLine: FC<BoardLineProps> = ({ routeId, predictions }) => {
 };
 ```
 
-- [ ] **Step 5: Write the BoardAlerts**
+- **Step 5: Write the BoardAlerts**
 
 ```typescript
 // frontend/src/board/BoardAlerts.tsx
@@ -4123,7 +4123,7 @@ export const BoardAlerts: FC<BoardAlertsProps> = ({ alerts, facilities, stopId }
 };
 ```
 
-- [ ] **Step 6: Write the DepartureBoard component**
+- **Step 6: Write the DepartureBoard component**
 
 ```typescript
 // frontend/src/components/DepartureBoard.tsx
@@ -4223,7 +4223,7 @@ export function DepartureBoard({ predictions, alerts, facilities }: DepartureBoa
 }
 ```
 
-- [ ] **Step 7: Update App.tsx to use DepartureBoard**
+- **Step 7: Update App.tsx to use DepartureBoard**
 
 Modify `frontend/src/components/App.tsx` — replace the placeholder boards view:
 
@@ -4297,7 +4297,7 @@ export function App() {
 }
 ```
 
-- [ ] **Step 8: Commit**
+- **Step 8: Commit**
 
 ```bash
 git add frontend/src/styles/board.css frontend/src/hooks/useGeolocation.ts frontend/src/board/ frontend/src/components/DepartureBoard.tsx frontend/src/components/App.tsx
@@ -4311,10 +4311,10 @@ git commit -m "feat(frontend): add departure board view with station selector an
 ### Task 24: Alert Layer + Alert Banner
 
 **Files:**
+
 - Create: `frontend/src/layers/AlertLayer.ts`
 - Create: `frontend/src/overlays/AlertBanner.tsx`
-
-- [ ] **Step 1: Write the AlertLayer**
+- **Step 1: Write the AlertLayer**
 
 ```typescript
 // frontend/src/layers/AlertLayer.ts
@@ -4373,7 +4373,7 @@ export function createAlertLayer(segments: AlertSegment[]) {
 }
 ```
 
-- [ ] **Step 2: Write the AlertBanner**
+- **Step 2: Write the AlertBanner**
 
 ```typescript
 // frontend/src/overlays/AlertBanner.tsx
@@ -4418,7 +4418,7 @@ export const AlertBanner: FC<AlertBannerProps> = ({ alerts }) => {
 };
 ```
 
-- [ ] **Step 3: Commit**
+- **Step 3: Commit**
 
 ```bash
 git add frontend/src/layers/AlertLayer.ts frontend/src/overlays/AlertBanner.tsx
@@ -4430,9 +4430,9 @@ git commit -m "feat(frontend): add alert overlay layer and system-wide alert ban
 ### Task 25: Accessibility Layer
 
 **Files:**
-- Create: `frontend/src/layers/AccessibilityLayer.ts`
 
-- [ ] **Step 1: Write the accessibility overlay layer**
+- Create: `frontend/src/layers/AccessibilityLayer.ts`
+- **Step 1: Write the accessibility overlay layer**
 
 ```typescript
 // frontend/src/layers/AccessibilityLayer.ts
@@ -4494,7 +4494,7 @@ export function createAccessibilityLayer(data: AccessibilityDot[]) {
 }
 ```
 
-- [ ] **Step 2: Commit**
+- **Step 2: Commit**
 
 ```bash
 git add frontend/src/layers/AccessibilityLayer.ts
@@ -4506,9 +4506,9 @@ git commit -m "feat(frontend): add accessibility overlay layer for broken facili
 ### Task 26: Integrate Alert + Accessibility Layers into LiveMap
 
 **Files:**
-- Modify: `frontend/src/components/LiveMap.tsx`
 
-- [ ] **Step 1: Update LiveMap to include alert and accessibility layers**
+- Modify: `frontend/src/components/LiveMap.tsx`
+- **Step 1: Update LiveMap to include alert and accessibility layers**
 
 Add imports at the top of LiveMap.tsx:
 
@@ -4573,7 +4573,7 @@ Add the AlertBanner to the JSX return, after the DeckGL block:
   );
 ```
 
-- [ ] **Step 2: Verify types compile**
+- **Step 2: Verify types compile**
 
 ```bash
 cd ~/MBTA
@@ -4582,7 +4582,7 @@ npx --workspace=frontend tsc --noEmit
 
 Expected: clean exit.
 
-- [ ] **Step 3: Commit**
+- **Step 3: Commit**
 
 ```bash
 git add frontend/src/components/LiveMap.tsx
@@ -4596,9 +4596,9 @@ git commit -m "feat(frontend): integrate alert and accessibility layers into Liv
 ### Task 27: Loading Skeleton + Error States
 
 **Files:**
-- Modify: `frontend/src/components/App.tsx`
 
-- [ ] **Step 1: Add a loading state to App**
+- Modify: `frontend/src/components/App.tsx`
+- **Step 1: Add a loading state to App**
 
 Update App.tsx to show a loading screen while WebSocket connects:
 
@@ -4636,7 +4636,7 @@ Update App.tsx to show a loading screen while WebSocket connects:
 )}
 ```
 
-- [ ] **Step 2: Commit**
+- **Step 2: Commit**
 
 ```bash
 git add frontend/src/components/App.tsx
@@ -4648,9 +4648,9 @@ git commit -m "feat(frontend): add loading skeleton while WebSocket connects"
 ### Task 28: Meta Tags + Favicon
 
 **Files:**
-- Modify: `frontend/index.html`
 
-- [ ] **Step 1: Update index.html with meta tags**
+- Modify: `frontend/index.html`
+- **Step 1: Update index.html with meta tags**
 
 ```html
 <!DOCTYPE html>
@@ -4685,7 +4685,7 @@ git commit -m "feat(frontend): add loading skeleton while WebSocket connects"
 </html>
 ```
 
-- [ ] **Step 2: Commit**
+- **Step 2: Commit**
 
 ```bash
 git add frontend/index.html
@@ -4697,10 +4697,10 @@ git commit -m "feat(frontend): add Open Graph meta tags and maplibre CSS"
 ### Task 29: Environment Configuration + .env Files
 
 **Files:**
+
 - Create: `backend/.env.example`
 - Create: `frontend/.env.example`
-
-- [ ] **Step 1: Write env examples**
+- **Step 1: Write env examples**
 
 ```bash
 # backend/.env.example
@@ -4713,7 +4713,7 @@ PORT=3001
 VITE_MAPTILER_API_KEY=your_maptiler_api_key_here
 ```
 
-- [ ] **Step 2: Update .gitignore to cover .env in subdirectories**
+- **Step 2: Update .gitignore to cover .env in subdirectories**
 
 Ensure `.gitignore` at root has:
 
@@ -4726,7 +4726,7 @@ dist/
 .DS_Store
 ```
 
-- [ ] **Step 3: Commit**
+- **Step 3: Commit**
 
 ```bash
 git add backend/.env.example frontend/.env.example .gitignore
@@ -4739,12 +4739,12 @@ git commit -m "chore: add .env.example files for backend and frontend API keys"
 
 **Files:** None new — this is a manual verification task.
 
-- [ ] **Step 1: Get API keys**
+- **Step 1: Get API keys**
 
-1. MBTA API key: Visit https://api-v3.mbta.com/ and register for a free key.
-2. MapTiler API key: Visit https://cloud.maptiler.com/account/keys/ and get a free key.
+1. MBTA API key: Visit [https://api-v3.mbta.com/](https://api-v3.mbta.com/) and register for a free key.
+2. MapTiler API key: Visit [https://cloud.maptiler.com/account/keys/](https://cloud.maptiler.com/account/keys/) and get a free key.
 
-- [ ] **Step 2: Configure environment**
+- **Step 2: Configure environment**
 
 ```bash
 cd ~/MBTA
@@ -4753,7 +4753,7 @@ cp frontend/.env.example frontend/.env
 # Edit both .env files with your API keys
 ```
 
-- [ ] **Step 3: Install and start**
+- **Step 3: Install and start**
 
 ```bash
 cd ~/MBTA
@@ -4763,11 +4763,12 @@ npm run dev:backend
 npm run dev:frontend
 ```
 
-- [ ] **Step 4: Verify in browser**
+- **Step 4: Verify in browser**
 
-Open http://localhost:5173
+Open [http://localhost:5173](http://localhost:5173)
 
 Expected:
+
 - Dark map centered on Boston with 3D buildings
 - Colored route lines for Red, Orange, Blue, Green, Mattapan
 - White station dots along routes
@@ -4777,8 +4778,7 @@ Expected:
 - Click "BOARDS" → departure board view
 - Click ♿ → accessibility overlay (red dots on broken facility stations)
 - Alert banner appears if any active shutdowns
-
-- [ ] **Step 5: Run all tests**
+- **Step 5: Run all tests**
 
 ```bash
 cd ~/MBTA
@@ -4787,7 +4787,7 @@ npm test
 
 Expected: All backend and frontend tests pass.
 
-- [ ] **Step 6: Final commit**
+- **Step 6: Final commit**
 
 ```bash
 git add -A
@@ -4799,12 +4799,13 @@ git commit -m "chore: integration verification complete"
 ### Task 31: Tooltip Progress Bar
 
 **Files:**
+
 - Modify: `frontend/src/overlays/TrainTooltip.tsx`
 - Modify: `frontend/src/hooks/useTrainPositions.ts`
 
 The spec requires a progress bar showing journey percentage. We compute this from the train's position along its route shape.
 
-- [ ] **Step 1: Update TrainTrailData to include progress**
+- **Step 1: Update TrainTrailData to include progress**
 
 Add `progress` field to `TrainTrailData` in `frontend/src/hooks/useTrainPositions.ts`:
 
@@ -4842,7 +4843,7 @@ In the `useTrainPositions` hook, compute progress from the head index:
       });
 ```
 
-- [ ] **Step 2: Add progress bar to TrainTooltip**
+- **Step 2: Add progress bar to TrainTooltip**
 
 Update the TrainTooltip JSX to include, between the direction and stops sections:
 
@@ -4858,11 +4859,11 @@ Update the TrainTooltip JSX to include, between the direction and stops sections
 
 Add `progress: number` to TrainTooltipProps and pass it from LiveMap when creating the tooltip.
 
-- [ ] **Step 3: Update LiveMap to pass progress**
+- **Step 3: Update LiveMap to pass progress**
 
 In LiveMap.tsx, update the hoverInfo state and TrainTooltip rendering to pass `hoverInfo.train.progress`.
 
-- [ ] **Step 4: Commit**
+- **Step 4: Commit**
 
 ```bash
 git add frontend/src/hooks/useTrainPositions.ts frontend/src/overlays/TrainTooltip.tsx frontend/src/components/LiveMap.tsx
@@ -4874,12 +4875,13 @@ git commit -m "feat(frontend): add journey progress bar to train tooltip"
 ### Task 32: Weather Indicator Widget
 
 **Files:**
+
 - Create: `frontend/src/components/WeatherIndicator.tsx`
 - Modify: `frontend/src/components/App.tsx`
 
 The spec calls for a subtle weather icon in the corner during storms — no map clutter.
 
-- [ ] **Step 1: Write the WeatherIndicator component**
+- **Step 1: Write the WeatherIndicator component**
 
 ```typescript
 // frontend/src/components/WeatherIndicator.tsx
@@ -4932,7 +4934,7 @@ export const WeatherIndicator: FC<WeatherIndicatorProps> = ({ weather }) => {
 };
 ```
 
-- [ ] **Step 2: Add WeatherIndicator to App.tsx**
+- **Step 2: Add WeatherIndicator to App.tsx**
 
 Import and render in the App component, below the NavBar:
 
@@ -4943,7 +4945,7 @@ import { WeatherIndicator } from './WeatherIndicator';
 <WeatherIndicator weather={weather} />
 ```
 
-- [ ] **Step 3: Commit**
+- **Step 3: Commit**
 
 ```bash
 git add frontend/src/components/WeatherIndicator.tsx frontend/src/components/App.tsx
@@ -4954,12 +4956,14 @@ git commit -m "feat(frontend): add passive weather indicator during storms"
 
 ## Summary
 
-| Phase | Tasks | What it delivers |
-|-------|-------|-----------------|
-| 1: Setup + Backend | Tasks 1-10 | Monorepo scaffold, MBTA parsers, state manager, SSE streams, WS fan-out |
-| 2: Frontend Core | Tasks 11-21 | Dark 3D map, route lines, station dots, animated train trails, tooltip, nav |
-| 3: Interactivity | Tasks 22-23 | Station popup, departure board with geolocation |
-| 4: Overlays | Tasks 24-26 | Alert layer, accessibility layer, alert banner |
-| 5: Polish | Tasks 27-32 | Loading states, meta tags, env config, progress bar, weather widget, integration test |
+
+| Phase              | Tasks       | What it delivers                                                                      |
+| ------------------ | ----------- | ------------------------------------------------------------------------------------- |
+| 1: Setup + Backend | Tasks 1-10  | Monorepo scaffold, MBTA parsers, state manager, SSE streams, WS fan-out               |
+| 2: Frontend Core   | Tasks 11-21 | Dark 3D map, route lines, station dots, animated train trails, tooltip, nav           |
+| 3: Interactivity   | Tasks 22-23 | Station popup, departure board with geolocation                                       |
+| 4: Overlays        | Tasks 24-26 | Alert layer, accessibility layer, alert banner                                        |
+| 5: Polish          | Tasks 27-32 | Loading states, meta tags, env config, progress bar, weather widget, integration test |
+
 
 **Total: 32 tasks, each completable in 2-10 minutes.**

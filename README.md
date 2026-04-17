@@ -1,61 +1,62 @@
-# Boston Subway Live
+# Boston Live Transit
 
-Real-time MBTA subway tracker with smooth train animation, departure boards, and accessibility alerts.
+`bostonlive.transit` — real-time 3D dark map of every MBTA subway train moving across Greater Boston, plus a live station departure board. Inspired by [londonunderground.live](https://londonunderground.live).
+
+> Watch every MBTA train move across a 3D map of Boston, live.
+
+Built per the **Boston Live Transit PRD v1.0**: subway-only at MVP (Red, Orange, Blue, Green B/C/D/E, Mattapan).
 
 ## Architecture
 
 ```
-MBTA API (SSE)
-  |-- /vehicles stream
-  |-- /predictions stream
-  └-- /alerts stream
-        |
-        v
-  Backend (Node/Express :3001)
-  ├── MbtaStream      — opens 3 SSE connections to api-v3.mbta.com
-  ├── StateManager    — merges reset/add/update/remove events into in-memory state
-  ├── WsBroadcaster   — fans out incremental updates to all WebSocket clients
-  ├── FacilityPoller  — polls elevator/escalator status every 60 s
-  ├── WeatherPoller   — polls weather every 15 min
-  └── REST endpoints  — /api/shapes (GTFS), /api/stops, /health
-        |
-        v (WebSocket ws://localhost:3001/ws)
-        |
-  Frontend (React/Vite :5173)
-  ├── App.tsx          — WebSocket client, merges state slices
-  ├── LiveMap.tsx      — MapLibre GL + deck.gl animation loop
-  │     ├── PathLayer (train trails, lerp-interpolated)
-  │     └── ScatterplotLayer (train dots + stations)
-  └── DepartureBoard.tsx — searchable departure board with live countdowns
+MBTA V3 API (SSE streams)
+  ├─ /vehicles      ── GPS positions
+  ├─ /predictions   ── arrival predictions
+  └─ /alerts        ── service alerts
+        │
+        ▼
+  Backend (Node + Express :3001)
+  ├─ MbtaStream     — 3 persistent SSE connections to api-v3.mbta.com
+  ├─ StateManager   — in-memory merge of reset/add/update/remove events
+  ├─ WsBroadcaster  — fans out incremental updates to every WebSocket client
+  └─ REST           — /api/shapes (GTFS), /api/stops, /health, /ready
+        │
+        ▼ ws://…/ws
+        │
+  Frontend (React + Vite :5173)
+  ├─ TopBar         — bostonlive.transit wordmark + LIVE pill + MAP/BOARDS tabs
+  ├─ LiveMap        — MapLibre GL + deck.gl TripsLayer (animated trains + trails)
+  │   ├─ PathLayer   (dim static route tracks)
+  │   └─ Scatterplot (stations + delayed-train markers)
+  ├─ BoardsView     — station search, line badges, departure rows, alert banner
+  └─ Footer         — attribution + sponsor slot
 ```
 
-### SSE to WebSocket fan-out
+### Why this design (PRD §2.5)
 
-The backend keeps a single set of SSE connections to the MBTA API. Each incoming event (add / update / remove / reset) is applied to `StateManager` and immediately re-broadcast over WebSocket to every connected browser. New clients receive a full-state snapshot on connect so they are immediately up to date without replaying history.
+- **Map fills the viewport.** The product *is* the map. No drawers, no opaque sidebars.
+- **Dark theme only.** Coloured train lines pop against `#0A0A0A`.
+- **deck.gl, not three.js.** Purpose-built for geospatial animated data.
+- **Backend SSE → WebSocket fan-out.** One persistent connection to MBTA per stream, broadcast to all browsers.
 
-## API Keys
+## API keys
 
-Two free API keys are required:
 
-| Key | Where to get it |
-|-----|----------------|
-| `MBTA_API_KEY` | <https://api-v3.mbta.com/> — register for a free key |
-| `VITE_MAPTILER_API_KEY` | <https://www.maptiler.com/> — free tier is sufficient |
+| Key                     | Where to get it                                                                    |
+| ----------------------- | ---------------------------------------------------------------------------------- |
+| `MBTA_API_KEY`          | [https://api-v3.mbta.com/](https://api-v3.mbta.com/) — free                        |
+| `VITE_MAPTILER_API_KEY` | [https://www.maptiler.com/](https://www.maptiler.com/) — free tier (100K tiles/mo) |
+
+
+The frontend falls back to OpenFreeMap's dark style if no MapTiler key is set.
 
 ## Setup
 
-### Prerequisites
-
-- Node.js 20+
-- npm 10+
-
-### Install
-
 ```bash
-npm install
+node --version   # 20+
+npm install -g pnpm   # if you don't have it
+pnpm install
 ```
-
-### Configure environment
 
 Create `backend/.env`:
 
@@ -70,45 +71,79 @@ Create `frontend/.env`:
 VITE_MAPTILER_API_KEY=your_maptiler_key_here
 ```
 
-## Dev Commands
+## Dev
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start both backend and frontend in parallel |
-| `npm run dev:backend` | Backend only (tsx watch, port 3001) |
-| `npm run dev:frontend` | Frontend only (Vite, port 5173) |
-| `npm test` | Run all tests (backend + frontend) |
-| `npm test --workspace=backend` | Backend tests only |
-| `npm test --workspace=frontend` | Frontend tests only |
 
-The frontend Vite dev server proxies `/api/*` and `/ws` to `localhost:3001` — no CORS configuration needed during development.
+| Command              | Description                                  |
+| -------------------- | -------------------------------------------- |
+| `pnpm dev`           | Backend (3001) + frontend (5173) in parallel |
+| `pnpm dev:backend`   | Backend only (`tsx watch`)                   |
+| `pnpm dev:frontend`  | Frontend only (Vite)                         |
+| `pnpm build`         | Frontend production build                    |
+| `pnpm test`          | All workspace tests                          |
+| `pnpm test:backend`  | Backend only                                 |
+| `pnpm test:frontend` | Frontend only                                |
+| `pnpm lint`          | Biome check across both workspaces           |
+| `pnpm lint:fix`      | Biome check + apply safe fixes               |
 
-## Project Structure
+
+Vite proxies `/api/*` and `/ws` to `localhost:3001` — no CORS setup needed in dev.
+
+## MBTA brand colours (PRD §10)
+
+
+| Line          | Hex       |
+| ------------- | --------- |
+| Red           | `#DA291C` |
+| Orange        | `#ED8B00` |
+| Blue          | `#003DA5` |
+| Green B/C/D/E | `#00843D` |
+| Mattapan      | `#DA291C` |
+
+
+Never deviate — riders recognise these from station signage.
+
+## Project layout
 
 ```
-boston-subway-live/
-├── backend/
-│   └── src/
-│       ├── index.ts           — Express server entry point
-│       ├── mbta-stream.ts     — SSE client for MBTA API
-│       ├── state-manager.ts   — In-memory state for vehicles/predictions/alerts
-│       ├── ws-server.ts       — WebSocket broadcaster
-│       ├── facility-poller.ts — Elevator/escalator status polling
-│       ├── gtfs-loader.ts     — GTFS shape download and caching
-│       └── mbta-parser.ts     — API response normalisation
-└── frontend/
-    └── src/
-        ├── components/
-        │   ├── LiveMap.tsx        — Animated map with deck.gl
-        │   └── DepartureBoard.tsx — Station departure board
-        ├── overlays/
-        │   ├── TrainTooltip.tsx   — Hover tooltip on train trails
-        │   └── AlertBanner.tsx    — Service alert banner
-        ├── utils/
-        │   ├── mbta-colors.ts     — Route colour palette
-        │   ├── mbta-routes.ts     — Direction names per route
-        │   ├── snap-to-route.ts   — Nearest route-point lookup
-        │   └── time-format.ts     — Arrival time formatting
-        └── hooks/
-            └── useGeolocation.ts  — Browser geolocation hook
+backend/src/
+  index.ts          — Express + WebSocket entry
+  mbta-stream.ts    — SSE client (vehicles + predictions + alerts)
+  state-manager.ts  — In-memory state merge
+  ws-server.ts      — WebSocket fan-out
+  gtfs-loader.ts    — GTFS shape download + cache
+  mbta-parser.ts    — JSON:API → typed records
+
+frontend/src/
+  components/
+    TopBar.tsx, LivePill.tsx, BoardsView.tsx
+    LiveMap.tsx, InteractionHint.tsx, Footer.tsx, ErrorBoundary.tsx
+  overlays/
+    TrainTooltip.tsx, StationTooltip.tsx, AlertBanner.tsx
+  hooks/
+    useSystemState.ts, useWebSocket.ts, useRouteData.ts, useTrainTrips.ts
+    useMapLayers.ts, useGlobalSlashFocus.ts
+  store/
+    systemStore.ts      — Zustand store for vehicles/predictions/alerts
+  utils/
+    map-style.ts, maptiler-vintage-style.ts, debug-trips-worm.ts
+    mbta-colors.ts, mbta-routes.ts, snap-to-route.ts, time-format.ts, stop-names.ts
 ```
+
+### Tooling
+
+- **Package manager:** pnpm (workspaces defined in `pnpm-workspace.yaml`).
+- **Lint + format:** [Biome](https://biomejs.dev) (see `biome.json`). One tool, Rust-fast, replaces ESLint+Prettier.
+- **Frontend state:** [Zustand](https://github.com/pmndrs/zustand) store in `frontend/src/store/systemStore.ts` fed by the WebSocket hook.
+
+## Roadmap
+
+Per PRD §13:
+
+- **Phase 1 (MVP)** — subway live map + BOARDS page. *(this repo)*
+- **Phase 2** — service-alerts overlay, Commuter Rail, line-filter toggles, share/permalink URLs.
+- **Phase 3** — Ferry vessel tracking, bus layer, embeddable widget, historical playback.
+
+## Credits
+
+MBTA data is open and free under the MassDOT Developer License Agreement. Map tiles by MapTiler / OpenFreeMap / OpenStreetMap contributors. Spiritual successor to [londonunderground.live](https://londonunderground.live) by Ben James.

@@ -1,54 +1,84 @@
+/* Boston Live Transit — dark theme only. PRD §8.4. */
 :root {
-  --bg-primary: #0a0a0a;
-  --bg-surface: #141414;
-  --bg-tooltip: rgba(20, 20, 20, 0.92);
-  --text-primary: #e0e0e0;
-  --text-secondary: #888888;
-  --text-muted: #555555;
-  --red-line: #DA291C;
-  --orange-line: #ED8B00;
-  --blue-line: #003DA5;
-  --green-line: #00843D;
-  --status-ok: #4CAF50;
-  --status-alert: #FF9800;
-  --status-down: #F44336;
+  --map-base: #0a0a0a;
+  --text-primary: #ffffff;
+  --text-secondary: #aaaaaa;
+  --text-muted: #777777;
+
+  --accent-live: #da291c;
+  --tooltip-bg: rgba(15, 20, 40, 0.92);
+  --alert-amber: #ffc72c;
+  --progress-fill: #da291c;
+  --progress-track: #333333;
+
+  --hairline: rgba(255, 255, 255, 0.1);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+
+  --mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  overflow: hidden;
-  width: 100vw;
-  height: 100vh;
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-#root { width: 100%; height: 100%; }
-
-main {
+html,
+body,
+#root {
   width: 100%;
   height: 100%;
-  position: relative;
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+  margin: 0;
   padding: 0;
-  margin: -1px;
   overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+  -webkit-font-smoothing: antialiased;
+  background: linear-gradient(55deg, #1f2937 0%, #141362 100%);
+  color: var(--text-primary);
+}
+
+#root {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+a {
+  color: inherit;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.65;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.85);
+    opacity: 0.65;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
   }
 }

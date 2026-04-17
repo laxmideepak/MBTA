@@ -6,9 +6,35 @@ export interface Vehicle {
   bearing: number;
   currentStatus: 'IN_TRANSIT_TO' | 'STOPPED_AT' | 'INCOMING_AT';
   stopId: string;
+  /** MBTA `current_stop_sequence` — position of the vehicle in its trip. */
+  currentStopSequence: number | null;
   directionId: number;
   label: string;
+  /** MBTA `trip` relationship id. Required to look up this vehicle's
+   *  remaining-stops sequence in `predictions` by `tripId`. */
+  tripId: string;
   updatedAt: string;
+  /**
+   * Server-side reference enrichment — convenience fields so the client can
+   * render without joining on `/stops` + `/routes` + `/trips` locally.
+   */
+  routeColor?: string | null;
+  currentStopName?: string | null;
+  destination?: string | null;
+  delayed?: boolean;
+  /**
+   * Server-side derived slice: next predicted stops for this vehicle's trip.
+   * Optional so older clients can ignore it.
+   */
+  nextStops?: NextStop[];
+}
+
+export interface NextStop {
+  stopId: string;
+  stopName: string;
+  /** ETA in seconds from serverTime when computed. */
+  etaSec: number;
+  status: string | null;
 }
 
 export interface Prediction {
@@ -24,14 +50,60 @@ export interface Prediction {
   stopSequence: number;
 }
 
+/**
+ * Scheduled (published-timetable) departure from MBTA V3 `/schedules`.
+ * No live prediction — use to fill in the board when predictions are
+ * sparse (late night, low-traffic stops) or to show later trips.
+ */
+export interface ScheduledDeparture {
+  id: string;
+  routeId: string;
+  stopId: string;
+  directionId: number;
+  arrivalTime: string | null;
+  departureTime: string | null;
+  tripId: string;
+  stopSequence: number;
+}
+
+/**
+ * MBTA alert lifecycle. V3 API string values mirror the v2 doc:
+ *   NEW              — happening now, relatively new information
+ *   ONGOING          — active and has been for a while
+ *   UPCOMING         — will happen in future
+ *   ONGOING_UPCOMING — both (repeating alert currently active)
+ *   CLOSED           — ended (we drop these upstream)
+ */
+export type AlertLifecycle =
+  | 'NEW'
+  | 'ONGOING'
+  | 'UPCOMING'
+  | 'ONGOING_UPCOMING'
+  | 'CLOSED'
+  | 'UNKNOWN';
+
 export interface Alert {
   id: string;
   effect: string;
   cause: string;
+  /** Long-form header (300+ chars). Keep for detail view only. */
   header: string;
+  /** 140-char curated summary (v3 short_header). */
+  shortHeader: string;
+  /** Very short summary, e.g. "Green Line B shuttle". Primary banner label. */
+  serviceEffect: string;
+  /** Human-readable effective period, e.g. "Starting Wednesday". */
+  timeframe: string | null;
+  /**
+   * When populated, MBTA explicitly marks this alert as "front-and-center".
+   * Outranks severity for banner pinning.
+   */
+  banner: string | null;
   description: string;
   severity: number;
-  lifecycle: string;
+  lifecycle: AlertLifecycle;
+  /** Deep link to mbta.com for full details. */
+  url: string | null;
   activePeriod: { start: string; end: string | null }[];
   informedEntities: {
     routeId: string | null;
@@ -40,38 +112,14 @@ export interface Alert {
     routeType: number | null;
     activities: string[];
   }[];
+  createdAt: string | null;
   updatedAt: string;
-}
-
-export interface Facility {
-  id: string;
-  longName: string;
-  shortName: string;
-  type: 'ELEVATOR' | 'ESCALATOR';
-  stopId: string;
-  latitude: number | null;
-  longitude: number | null;
-}
-
-export interface FacilityStatus {
-  facilityId: string;
-  status: 'WORKING' | 'OUT_OF_ORDER';
-  updatedAt: string;
-}
-
-export interface Weather {
-  temperature: number;
-  condition: string;
-  icon: string;
 }
 
 export interface SystemState {
   vehicles: Map<string, Vehicle>;
   predictions: Map<string, Prediction[]>;
   alerts: Alert[];
-  facilities: Map<string, Facility>;
-  facilityStatuses: Map<string, FacilityStatus>;
-  weather: Weather | null;
 }
 
 export type WsMessageType =
@@ -79,8 +127,8 @@ export type WsMessageType =
   | 'vehicles-update'
   | 'predictions-update'
   | 'alerts-update'
-  | 'facilities-update'
-  | 'weather-update';
+  | 'delta'
+  | 'heartbeat';
 
 export interface WsMessage {
   type: WsMessageType;
@@ -88,19 +136,9 @@ export interface WsMessage {
   timestamp: number;
 }
 
-export interface MbtaJsonApiResponse {
-  data: MbtaResource | MbtaResource[];
-  included?: MbtaResource[];
-}
-
 export interface MbtaResource {
   type: string;
   id: string;
   attributes: Record<string, unknown>;
   relationships?: Record<string, { data: { type: string; id: string } | null }>;
-}
-
-export interface MbtaSseEvent {
-  event: 'reset' | 'add' | 'update' | 'remove';
-  data: MbtaJsonApiResponse;
 }

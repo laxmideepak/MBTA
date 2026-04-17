@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WsMessage } from '../types';
 
 interface UseWebSocketOptions {
@@ -12,30 +12,55 @@ export function useWebSocket({ url, onMessage }: UseWebSocketOptions) {
   const onMessageRef = useRef(onMessage);
   onMessageRef.current = onMessage;
   const attemptRef = useRef(0);
+  const connectTokenRef = useRef(0);
 
   const connect = useCallback(() => {
+    connectTokenRef.current++;
+    const token = connectTokenRef.current;
     const ws = new WebSocket(url);
-    ws.onopen = () => { setConnected(true); attemptRef.current = 0; };
+    ws.onopen = () => {
+      setConnected(true);
+      attemptRef.current = 0;
+    };
     ws.onmessage = (event) => {
-      try { const msg: WsMessage = JSON.parse(event.data); onMessageRef.current(msg); } catch {}
+      try {
+        const msg: WsMessage = JSON.parse(event.data);
+        onMessageRef.current(msg);
+      } catch {}
     };
     ws.onclose = () => {
       setConnected(false);
-      const backoff = Math.min(1000 * Math.pow(2, attemptRef.current), 30000);
+      if (connectTokenRef.current !== token) return;
+      const backoff = Math.min(1000 * 2 ** attemptRef.current, 30000);
       attemptRef.current++;
       setTimeout(() => {
-        if (wsRef.current === ws) {
+        if (connectTokenRef.current === token && wsRef.current === ws) {
           connect();
         }
       }, backoff);
     };
-    ws.onerror = () => ws.close();
+    ws.onerror = () => {
+      /* swallow — onclose will retry */
+    };
     wsRef.current = ws;
   }, [url]);
 
   useEffect(() => {
-    connect();
-    return () => { const ws = wsRef.current; wsRef.current = null; ws?.close(); };
+    // Defer the actual WebSocket construction by one task so React StrictMode's
+    // immediate mount→unmount→remount in dev can be collapsed before the browser
+    // even opens a socket (avoids noisy "closed before established" console errors).
+    let timer: number | undefined = window.setTimeout(() => {
+      timer = undefined;
+      connect();
+    }, 0);
+    return () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      connectTokenRef.current++;
+      const ws = wsRef.current;
+      wsRef.current = null;
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+      else if (ws) ws.close(); // still close so browser cleans up
+    };
   }, [connect]);
 
   return { connected };
