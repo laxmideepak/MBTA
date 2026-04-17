@@ -226,23 +226,35 @@ export class ReferenceData {
       `https://api-v3.mbta.com/routes?filter[type]=${encodeURIComponent(routeTypeFilter)}&page[limit]=10000`,
       this.apiKey,
     );
+    const routesRaw = await fetchAllPages(routesUrl, this.fetchFn);
+    const routes = parseRoutes(routesRaw);
+    // `/trips` does not support `filter[route_type]` (400). Scope trips to the
+    // subway routes we already loaded instead.
+    const routeIds = Array.from(routes.keys()).sort().join(',');
+
     const stopsUrl = withMbtaKey(
       `https://api-v3.mbta.com/stops?filter[route_type]=${encodeURIComponent(routeTypeFilter)}&page[limit]=10000`,
       this.apiKey,
     );
-    const tripsUrl = withMbtaKey(
-      `https://api-v3.mbta.com/trips?filter[route_type]=${encodeURIComponent(routeTypeFilter)}&page[limit]=10000`,
-      this.apiKey,
-    );
 
-    const [routesRaw, stopsRaw, tripsRaw] = await Promise.all([
-      fetchAllPages(routesUrl, this.fetchFn),
-      fetchAllPages(stopsUrl, this.fetchFn),
-      fetchAllPages(tripsUrl, this.fetchFn),
-    ]);
+    let stopsRaw: MbtaResource[];
+    let tripsRaw: MbtaResource[];
+    if (routeIds.length === 0) {
+      stopsRaw = await fetchAllPages(stopsUrl, this.fetchFn);
+      tripsRaw = [];
+    } else {
+      const tripsUrl = withMbtaKey(
+        `https://api-v3.mbta.com/trips?filter[route]=${encodeURIComponent(routeIds)}&page[limit]=10000`,
+        this.apiKey,
+      );
+      [stopsRaw, tripsRaw] = await Promise.all([
+        fetchAllPages(stopsUrl, this.fetchFn),
+        fetchAllPages(tripsUrl, this.fetchFn),
+      ]);
+    }
 
     const next: ReferenceDataSnapshot = {
-      routes: parseRoutes(routesRaw),
+      routes,
       stops: parseStops(stopsRaw),
       trips: parseTrips(tripsRaw),
       fetchedAt,

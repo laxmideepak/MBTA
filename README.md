@@ -41,10 +41,12 @@ MBTA V3 API (SSE streams)
 
 ## API keys
 
-| Key | Where to get it |
-|-----|----------------|
-| `MBTA_API_KEY` | <https://api-v3.mbta.com/> — free |
-| `VITE_MAPTILER_API_KEY` | <https://www.maptiler.com/> — free tier (100K tiles/mo) |
+
+| Key                     | Where to get it                                                                    |
+| ----------------------- | ---------------------------------------------------------------------------------- |
+| `MBTA_API_KEY`          | [https://api-v3.mbta.com/](https://api-v3.mbta.com/) — free                        |
+| `VITE_MAPTILER_API_KEY` | [https://www.maptiler.com/](https://www.maptiler.com/) — free tier (100K tiles/mo) |
+
 
 The frontend falls back to OpenFreeMap's dark style if no MapTiler key is set.
 
@@ -71,29 +73,33 @@ VITE_MAPTILER_API_KEY=your_maptiler_key_here
 
 ## Dev
 
-| Command | Description |
-|---------|-------------|
-| `pnpm dev`                  | Backend (3001) + frontend (5173) in parallel |
-| `pnpm dev:backend`          | Backend only (`tsx watch`) |
-| `pnpm dev:frontend`         | Frontend only (Vite) |
-| `pnpm build`                | Frontend production build |
-| `pnpm test`                 | All workspace tests |
-| `pnpm test:backend`         | Backend only |
-| `pnpm test:frontend`        | Frontend only |
-| `pnpm lint`                 | Biome check across both workspaces |
-| `pnpm lint:fix`             | Biome check + apply safe fixes |
+
+| Command              | Description                                  |
+| -------------------- | -------------------------------------------- |
+| `pnpm dev`           | Backend (3001) + frontend (5173) in parallel |
+| `pnpm dev:backend`   | Backend only (`tsx watch`)                   |
+| `pnpm dev:frontend`  | Frontend only (Vite)                         |
+| `pnpm build`         | Frontend production build                    |
+| `pnpm test`          | All workspace tests                          |
+| `pnpm test:backend`  | Backend only                                 |
+| `pnpm test:frontend` | Frontend only                                |
+| `pnpm lint`          | Biome check across both workspaces           |
+| `pnpm lint:fix`      | Biome check + apply safe fixes               |
+
 
 Vite proxies `/api/*` and `/ws` to `localhost:3001` — no CORS setup needed in dev.
 
 ## MBTA brand colours (PRD §10)
 
-| Line          | Hex     |
-|---------------|---------|
+
+| Line          | Hex       |
+| ------------- | --------- |
 | Red           | `#DA291C` |
 | Orange        | `#ED8B00` |
 | Blue          | `#003DA5` |
 | Green B/C/D/E | `#00843D` |
 | Mattapan      | `#DA291C` |
+
 
 Never deviate — riders recognise these from station signage.
 
@@ -133,6 +139,7 @@ frontend/src/
 ## Roadmap
 
 Per PRD §13:
+
 - **Phase 1 (MVP)** — subway live map + BOARDS page. *(this repo)*
 - **Phase 2** — service-alerts overlay, Commuter Rail, line-filter toggles, share/permalink URLs.
 - **Phase 3** — Ferry vessel tracking, bus layer, embeddable widget, historical playback.

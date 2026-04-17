@@ -140,12 +140,18 @@ export function useTrainTrips(
       const coords = shape.path;
       if (coords.length < 2) continue;
 
-      const targetIdx = findNearestPointIndex(v.longitude, v.latitude, coords);
+      const rawTargetIdx = findNearestPointIndex(v.longitude, v.latitude, coords);
       const prevAnchor = anchors.get(v.id);
       const prevMatched =
         prevAnchor && prevAnchor.routeId === v.routeId && prevAnchor.directionId === v.directionId
           ? prevAnchor
           : undefined;
+
+      // GPS jitter can make `findNearestPointIndex` hop backward by a few points,
+      // which flips our forward/backward orientation and causes visible flicker.
+      // Trains almost never reverse along a route shape, so clamp to monotonic
+      // non-decreasing index within a continuous route+direction run.
+      const targetIdx = prevMatched ? Math.max(rawTargetIdx, prevMatched.targetIdx) : rawTargetIdx;
 
       let speed = computeSpeed(prevMatched, targetIdx, anchorWallSec);
       const stopped = v.currentStatus === 'STOPPED_AT';

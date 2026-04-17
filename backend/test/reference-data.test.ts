@@ -95,7 +95,7 @@ describe('reference-data', () => {
   });
 
   describe('ReferenceData', () => {
-    it('refreshNow fetches 3 endpoints and stores a snapshot', async () => {
+    it('refreshNow fetches routes then stops+trips (trips scoped by route id) and stores a snapshot', async () => {
       const fetchFn = vi.fn(async (url: string) => {
         const mk = (data: MbtaResource[]) =>
           ({
@@ -119,7 +119,7 @@ describe('reference-data', () => {
             mkResource({ id: 'place-pktrm', type: 'stop', attributes: { name: 'Park' } }),
           ]);
         }
-        if (url.includes('/trips?')) {
+        if (url.includes('/trips?') && url.includes('filter[route]=')) {
           return mk([
             mkResource({
               id: 'trip-1',
