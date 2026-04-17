@@ -9,6 +9,7 @@ import { loadShapes } from './gtfs-loader.js';
 import { withMbtaKey } from './mbta-api-url.js';
 import { parseSchedule } from './mbta-parser.js';
 import { MbtaStream } from './mbta-stream.js';
+import { ReferenceData } from './reference-data.js';
 import { StateManager } from './state-manager.js';
 import type { Alert, MbtaResource, Prediction, ScheduledDeparture, Vehicle } from './types.js';
 import { WsBroadcaster } from './ws-server.js';
@@ -36,6 +37,7 @@ const server = createServer(app);
 const stateManager = new StateManager();
 const wsBroadcaster = new WsBroadcaster(server, stateManager);
 const coalescer = new Coalescer(stateManager, wsBroadcaster);
+const referenceData = new ReferenceData({ apiKey: MBTA_API_KEY });
 
 const startTime = Date.now();
 let lastSseEventTime = 0;
@@ -246,6 +248,11 @@ async function start() {
   shapesCache = await loadShapes(MBTA_API_KEY);
   console.log(`Loaded shapes for ${shapesCache.size} routes`);
 
+  console.log('Loading reference data (routes/stops/trips)...');
+  await referenceData.refreshNow();
+  referenceData.startDailyRefresh();
+  console.log('Reference data loaded');
+
   mbtaStream.start();
   console.log('MBTA SSE streams connected');
 
@@ -257,6 +264,7 @@ async function start() {
   const shutdown = () => {
     console.log('Shutting down gracefully...');
     mbtaStream.stop();
+    referenceData.close();
     coalescer.close();
     wsBroadcaster.close();
     server.close(() => {
