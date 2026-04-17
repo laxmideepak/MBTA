@@ -30,12 +30,15 @@ export function useWebSocket({ url, onMessage }: UseWebSocketOptions) {
       } catch {}
     };
     ws.onclose = () => {
+      // Only the *current* socket's close should mutate shared state. A stale
+      // socket closing after a remount/reconnect must not wipe the fresh
+      // offset the new socket just established.
+      if (connectTokenRef.current !== token) return;
       setConnected(false);
       // Drop server offset on disconnect — server-origin stamps are only
       // meaningful against a recent baseline. `useServerNow()` consumers
       // should render as "no clock yet" until a fresh full-state arrives.
       resetServerOffset();
-      if (connectTokenRef.current !== token) return;
       const backoff = Math.min(1000 * 2 ** attemptRef.current, 30000);
       attemptRef.current++;
       setTimeout(() => {
@@ -46,6 +49,7 @@ export function useWebSocket({ url, onMessage }: UseWebSocketOptions) {
     };
     ws.onerror = () => {
       /* swallow — onclose will retry */
+      if (connectTokenRef.current !== token) return;
       resetServerOffset();
     };
     wsRef.current = ws;

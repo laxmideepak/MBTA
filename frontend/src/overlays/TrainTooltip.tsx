@@ -1,5 +1,5 @@
 import { FloatingPortal, flip, offset, shift, useFloating } from '@floating-ui/react';
-import { type FC, useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { type FC, useCallback, useLayoutEffect, useMemo, useReducer } from 'react';
 import { useAnimationFrame } from '../hooks/useAnimationFrame';
 import { useSystemStore } from '../store/systemStore';
 import type { Prediction, Vehicle } from '../types';
@@ -9,6 +9,44 @@ import { segmentProgress } from '../utils/segment-progress';
 import { getStopName } from '../utils/stop-names';
 import { formatStatusParts } from '../utils/time-format';
 import '../styles/tooltip.css';
+
+interface ProgressBarProps {
+  fraction: number;
+  fromStopName: string;
+  toStopName: string;
+  color: string;
+}
+
+/**
+ * The segment + animated progress bar + percent readout. Extracted so the
+ * fraction-derived pct/width math only runs when the bar is actually rendered
+ * (not on every `showHeadingTo` / no-bar render).
+ */
+const ProgressBar: FC<ProgressBarProps> = ({ fraction, fromStopName, toStopName, color }) => {
+  // Kept defensive even though `showBar` already clamps `fraction != null`.
+  const fractionPct = Math.round(fraction * 1000) / 10;
+  const fractionWidth = `${Math.min(100, Math.max(0, fraction * 100))}%`;
+  return (
+    <>
+      <div className="tooltip-segment">
+        <strong>{fromStopName}</strong>
+        <span className="tooltip-segment-arrow" aria-hidden="true">
+          {' → '}
+        </span>
+        <strong>{toStopName}</strong>
+      </div>
+      <div className="tooltip-progress-wrap">
+        <div className="tooltip-progress">
+          <div
+            className="tooltip-progress-bar"
+            style={{ width: fractionWidth, background: color }}
+          />
+        </div>
+        <span className="tooltip-progress-text">{fractionPct.toFixed(1)}%</span>
+      </div>
+    </>
+  );
+};
 
 interface TrainTooltipProps {
   x: number;
@@ -62,7 +100,7 @@ export const TrainTooltip: FC<TrainTooltipProps> = ({
     update();
   }, [virtualReference, refs, update]);
 
-  const { routeId, directionId, label, currentStatus, delayed, tripId } = vehicle;
+  const { routeId, directionId, label, currentStatus, delayed } = vehicle;
 
   const color = getRouteColorHex(routeId);
   const lineName = getRouteDisplayName(routeId);
@@ -89,18 +127,17 @@ export const TrainTooltip: FC<TrainTooltipProps> = ({
   // when the server clock rebaselines but not on every other store churn.
   const serverOffsetMs = useSystemStore((s) => s.serverOffsetMs);
 
-  // Animation state. Every rAF tick bumps a counter so segmentProgress
-  // re-runs with a fresh `Date.now()` reading. A counter instead of the raw
-  // timestamp guarantees a rerender each frame even if Date.now() hasn't
-  // advanced a full ms (happens in fast test loops / fake-timer contexts).
-  const [frameTick, setFrameTick] = useState(0);
+  // Animation state. Every rAF tick bumps a counter via useReducer so
+  // segmentProgress re-runs with a fresh `Date.now()` reading. A counter
+  // instead of the raw timestamp guarantees a rerender each frame even if
+  // Date.now() hasn't advanced a full ms (happens in fast test loops /
+  // fake-timer contexts). The tuple's first slot is intentionally discarded —
+  // we only consume `forceRender` and let the re-render itself re-read
+  // `Date.now()` below.
+  const [, forceRender] = useReducer((n: number) => n + 1, 0);
   useAnimationFrame(() => {
-    setFrameTick((n) => n + 1);
+    forceRender();
   });
-  // frameTick is the deliberate rerender trigger. Reading Date.now() outside
-  // a memo means segmentProgress runs on every render while this component
-  // is mounted — that's exactly what we want for smooth animation.
-  void frameTick;
   const frameTs = serverOffsetMs == null ? null : Date.now() + serverOffsetMs;
 
   const progress = segmentProgress({
@@ -110,31 +147,10 @@ export const TrainTooltip: FC<TrainTooltipProps> = ({
     prediction: predictionLookup,
   });
 
-  // Trip-scoped future stops: prefer the explicit prop; otherwise fall back
-  // to filtering the current stop's predictions by direction (legacy path).
-  const resolvedFutureStops = useMemo(() => {
-    if (futureStops.length > 0) return futureStops;
-    const bucket = predictions[vehicle.stopId] ?? [];
-    return bucket
-      .filter((p) => p.tripId === tripId && p.arrivalTime)
-      .sort(
-        (a, b) =>
-          new Date(a.arrivalTime as string).getTime() - new Date(b.arrivalTime as string).getTime(),
-      )
-      .slice(0, 5)
-      .map((pred) => ({
-        stopId: pred.stopId,
-        name: getStopName(pred.stopId),
-        time: pred.arrivalTime,
-        status: pred.status,
-      }));
-  }, [futureStops, predictions, vehicle.stopId, tripId]);
-
-  // Percent label for the bar. Kept as string to avoid rendering `NaN%`
-  // when fraction is null (we guard above the render anyway).
-  const fractionPct = progress.fraction != null ? Math.round(progress.fraction * 1000) / 10 : null;
-  const fractionWidth =
-    progress.fraction != null ? `${Math.min(100, Math.max(0, progress.fraction * 100))}%` : '0%';
+  // Trip-scoped future stops are always supplied by the caller (see
+  // `useTrainTrips` → `LiveMap`). The old legacy fallback that rebuilt them
+  // locally from `predictions[vehicle.stopId]` has been removed — every
+  // production call site passes a (possibly empty) array.
 
   const showBar =
     progress.fraction != null && progress.fromStopName != null && progress.toStopName != null;
@@ -190,26 +206,12 @@ export const TrainTooltip: FC<TrainTooltipProps> = ({
         </div>
 
         {showBar ? (
-          <>
-            <div className="tooltip-segment">
-              <strong>{progress.fromStopName}</strong>
-              <span className="tooltip-segment-arrow" aria-hidden="true">
-                {' → '}
-              </span>
-              <strong>{progress.toStopName}</strong>
-            </div>
-            <div className="tooltip-progress-wrap">
-              <div className="tooltip-progress">
-                <div
-                  className="tooltip-progress-bar"
-                  style={{ width: fractionWidth, background: color }}
-                />
-              </div>
-              <span className="tooltip-progress-text">
-                {fractionPct != null ? fractionPct.toFixed(1) : '0.0'}%
-              </span>
-            </div>
-          </>
+          <ProgressBar
+            fraction={progress.fraction as number}
+            fromStopName={progress.fromStopName as string}
+            toStopName={progress.toStopName as string}
+            color={color}
+          />
         ) : showHeadingTo ? (
           <div className="tooltip-status-line">
             <span
@@ -221,10 +223,10 @@ export const TrainTooltip: FC<TrainTooltipProps> = ({
           </div>
         ) : null}
 
-        {resolvedFutureStops.length > 0 && (
+        {futureStops.length > 0 && (
           <div className="tooltip-stops">
             <div className="tooltip-stops-label">Next stops</div>
-            {resolvedFutureStops.map((stop, idx) => {
+            {futureStops.map((stop, idx) => {
               const { label, clock } = formatStatusParts(stop.time, stop.status);
               return (
                 <div

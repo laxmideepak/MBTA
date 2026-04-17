@@ -233,62 +233,96 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+/**
+ * Vehicle event enrichment: merge in the departure-cache hints for the
+ * station-to-station progress bar, then layer on reference-data-derived
+ * display fields (stop name / route color / destination headsign) when we
+ * have a snapshot. Returns a Vehicle ready to feed into the coalescer —
+ * behaviour is shared by the `add`, `update`, and `reset` paths.
+ */
+function enrichVehicleForEvent(v: Vehicle): Vehicle {
+  const now = Date.now();
+  departureCache.onEvent(v.id, v, now);
+  const entry = departureCache.get(v.id);
+  const withDeparture: Vehicle = {
+    ...v,
+    lastDepartedStopId: entry?.stopId ?? null,
+    lastDepartedAt: entry?.at ?? null,
+  };
+  const snap = referenceData.getSnapshot();
+  if (!snap) return withDeparture;
+  const stopName = snap.stops.get(v.stopId)?.name ?? null;
+  const routeColor = snap.routes.get(v.routeId)?.color ?? null;
+  const destination = snap.trips.get(v.tripId)?.headsign ?? null;
+  return { ...withDeparture, currentStopName: stopName, routeColor, destination };
+}
+
+/**
+ * After a predictions `reset`, rebuild `nextStops` on every known vehicle so
+ * downstream consumers don't see stale per-trip sequences while the
+ * predictions index churns through the snapshot.
+ */
+function rebuildNextStopsOnPredictionsReset(): void {
+  const ref = referenceData.getSnapshot();
+  if (!ref) return;
+  const stopNameById = new Map<string, string>();
+  for (const [id, s] of ref.stops) stopNameById.set(id, s.name);
+  const now = Date.now();
+  const snapshot = stateManager.getSnapshot();
+  const enriched = snapshot.vehicles.map((v) => ({
+    ...v,
+    nextStops: buildNextStopsForTrip(v.tripId, snapshot.predictions, stopNameById, now),
+  }));
+  coalescer.resetVehicles(enriched);
+}
+
+/**
+ * A single prediction add/update only affects the one vehicle on that trip.
+ * Rebuild that vehicle's `nextStops` (no-op if we can't identify the trip or
+ * no vehicle currently carries it).
+ */
+function rebuildNextStopsForVehicleOnPredictionChange(p: Prediction): void {
+  if (!p.tripId) return;
+  const ref = referenceData.getSnapshot();
+  if (!ref) return;
+  const stopNameById = new Map<string, string>();
+  for (const [id, s] of ref.stops) stopNameById.set(id, s.name);
+  const now = Date.now();
+  const snapshot = stateManager.getSnapshot();
+  const vehicle = snapshot.vehicles.find((v) => v.tripId === p.tripId);
+  if (!vehicle) return;
+  const nextStops = buildNextStopsForTrip(p.tripId, snapshot.predictions, stopNameById, now);
+  coalescer.upsertVehicle({ ...vehicle, nextStops });
+}
+
+/**
+ * Alert add/update/remove can all flip the delayed flag for any vehicle on
+ * an affected route. Recompute the set once and only push changes for
+ * vehicles whose `delayed` actually transitioned (the coalescer would skip
+ * no-op updates anyway, but this keeps the outbound delta cleaner).
+ */
+function recomputeDelayedFlagForAllVehicles(): void {
+  const now = Date.now();
+  const snapshot = stateManager.getSnapshot();
+  const delayedRoutes = delayedRouteIds(snapshot.alerts, now);
+  for (const v of snapshot.vehicles) {
+    const delayed = delayedRoutes.has(v.routeId);
+    if (v.delayed === delayed) continue;
+    coalescer.upsertVehicle({ ...v, delayed });
+  }
+}
+
 const mbtaStream = new MbtaStream({
   apiKey: MBTA_API_KEY,
   onVehicleEvent: (event) => {
     lastSseEventTime = Date.now();
     switch (event.type) {
       case 'reset':
-        coalescer.resetVehicles(
-          (event.data as Vehicle[]).map((v) => {
-            // Seed departure cache prev-state for every vehicle in the reset
-            // snapshot. No recorded departures are expected on a reset — we
-            // just need the initial status/stopId as baseline so the *next*
-            // STOPPED_AT → IN_TRANSIT_TO transition captures properly.
-            const now = Date.now();
-            departureCache.onEvent(v.id, v, now);
-            const entry = departureCache.get(v.id);
-            const snap = referenceData.getSnapshot();
-            const base = {
-              ...v,
-              lastDepartedStopId: entry?.stopId ?? null,
-              lastDepartedAt: entry?.at ?? null,
-            };
-            if (!snap) return base;
-            const stopName = snap.stops.get(v.stopId)?.name ?? null;
-            const routeColor = snap.routes.get(v.routeId)?.color ?? null;
-            const destination = snap.trips.get(v.tripId)?.headsign ?? null;
-            return { ...base, currentStopName: stopName, routeColor, destination };
-          }),
-        );
+        coalescer.resetVehicles((event.data as Vehicle[]).map(enrichVehicleForEvent));
         break;
       case 'add':
       case 'update':
-        (() => {
-          const v = event.data as Vehicle;
-          const now = Date.now();
-          departureCache.onEvent(v.id, v, now);
-          const entry = departureCache.get(v.id);
-          const withDeparture: Vehicle = {
-            ...v,
-            lastDepartedStopId: entry?.stopId ?? null,
-            lastDepartedAt: entry?.at ?? null,
-          };
-          const snap = referenceData.getSnapshot();
-          if (!snap) {
-            coalescer.upsertVehicle(withDeparture);
-            return;
-          }
-          const stopName = snap.stops.get(v.stopId)?.name ?? null;
-          const routeColor = snap.routes.get(v.routeId)?.color ?? null;
-          const destination = snap.trips.get(v.tripId)?.headsign ?? null;
-          coalescer.upsertVehicle({
-            ...withDeparture,
-            currentStopName: stopName,
-            routeColor,
-            destination,
-          });
-        })();
+        coalescer.upsertVehicle(enrichVehicleForEvent(event.data as Vehicle));
         break;
       case 'remove':
         departureCache.remove(event.id);
@@ -301,42 +335,12 @@ const mbtaStream = new MbtaStream({
     switch (event.type) {
       case 'reset':
         coalescer.resetPredictions(event.data as Prediction[]);
-        (() => {
-          const ref = referenceData.getSnapshot();
-          if (!ref) return;
-          const stopNameById = new Map<string, string>();
-          for (const [id, s] of ref.stops) stopNameById.set(id, s.name);
-          const now = Date.now();
-          const snapshot = stateManager.getSnapshot();
-          const enriched = snapshot.vehicles.map((v) => ({
-            ...v,
-            nextStops: buildNextStopsForTrip(v.tripId, snapshot.predictions, stopNameById, now),
-          }));
-          coalescer.resetVehicles(enriched);
-        })();
+        rebuildNextStopsOnPredictionsReset();
         break;
       case 'add':
       case 'update':
         coalescer.upsertPrediction(event.data as Prediction);
-        (() => {
-          const p = event.data as Prediction;
-          if (!p.tripId) return;
-          const ref = referenceData.getSnapshot();
-          if (!ref) return;
-          const stopNameById = new Map<string, string>();
-          for (const [id, s] of ref.stops) stopNameById.set(id, s.name);
-          const now = Date.now();
-          const snapshot = stateManager.getSnapshot();
-          const vehicle = snapshot.vehicles.find((v) => v.tripId === p.tripId);
-          if (!vehicle) return;
-          const nextStops = buildNextStopsForTrip(
-            p.tripId,
-            snapshot.predictions,
-            stopNameById,
-            now,
-          );
-          coalescer.upsertVehicle({ ...vehicle, nextStops });
-        })();
+        rebuildNextStopsForVehicleOnPredictionChange(event.data as Prediction);
         break;
       case 'remove':
         coalescer.removePrediction(event.id);
@@ -346,45 +350,30 @@ const mbtaStream = new MbtaStream({
   onAlertEvent: (event) => {
     lastSseEventTime = Date.now();
     switch (event.type) {
-      case 'reset':
+      case 'reset': {
         coalescer.resetAlerts(event.data as Alert[]);
-        (() => {
-          const now = Date.now();
-          const snapshot = stateManager.getSnapshot();
-          const delayedRoutes = delayedRouteIds(snapshot.alerts, now);
-          const enriched = snapshot.vehicles.map((v) => ({
-            ...v,
-            delayed: delayedRoutes.has(v.routeId),
-          }));
-          coalescer.resetVehicles(enriched);
-        })();
+        // After a full alerts reset we re-push every vehicle so the delayed
+        // flag is consistent with the new alert set (even vehicles whose
+        // flag didn't change — the coalescer is the authority on what's
+        // actually emitted downstream).
+        const now = Date.now();
+        const snapshot = stateManager.getSnapshot();
+        const delayedRoutes = delayedRouteIds(snapshot.alerts, now);
+        const enriched = snapshot.vehicles.map((v) => ({
+          ...v,
+          delayed: delayedRoutes.has(v.routeId),
+        }));
+        coalescer.resetVehicles(enriched);
         break;
+      }
       case 'add':
       case 'update':
         coalescer.upsertAlert(event.data as Alert);
-        (() => {
-          const now = Date.now();
-          const snapshot = stateManager.getSnapshot();
-          const delayedRoutes = delayedRouteIds(snapshot.alerts, now);
-          for (const v of snapshot.vehicles) {
-            const delayed = delayedRoutes.has(v.routeId);
-            if (v.delayed === delayed) continue;
-            coalescer.upsertVehicle({ ...v, delayed });
-          }
-        })();
+        recomputeDelayedFlagForAllVehicles();
         break;
       case 'remove':
         coalescer.removeAlert(event.id);
-        (() => {
-          const now = Date.now();
-          const snapshot = stateManager.getSnapshot();
-          const delayedRoutes = delayedRouteIds(snapshot.alerts, now);
-          for (const v of snapshot.vehicles) {
-            const delayed = delayedRoutes.has(v.routeId);
-            if (v.delayed === delayed) continue;
-            coalescer.upsertVehicle({ ...v, delayed });
-          }
-        })();
+        recomputeDelayedFlagForAllVehicles();
         break;
     }
   },
@@ -411,7 +400,10 @@ async function start() {
   // gap > 30m) stops occupying memory; active trains refresh `lastSeen` on
   // every event so they never get reaped.
   const sweepIntervalId = setInterval(
-    () => departureCache.sweep(Date.now(), 30 * 60 * 1000),
+    () => {
+      const removed = departureCache.sweep(Date.now(), 30 * 60 * 1000);
+      if (removed > 0) console.log('[departureCache] swept', removed);
+    },
     5 * 60 * 1000,
   );
 

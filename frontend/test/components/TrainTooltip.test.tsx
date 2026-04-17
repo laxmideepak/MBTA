@@ -1,36 +1,13 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Vehicle } from '../../src/types';
-
-// Mutable mock for segmentProgress — each test overrides the next return
-// value so we can stage fractions across simulated frames.
-const segmentProgressQueue: Array<ReturnType<typeof buildProgress>> = [];
-
-function buildProgress(
-  overrides: Partial<{
-    fraction: number | null;
-    fromStopName: string | null;
-    toStopName: string | null;
-  }> = {},
-) {
-  return {
-    fraction: 0,
-    fromStopName: 'Park St',
-    toStopName: 'Downtown Crossing',
-    ...overrides,
-  };
-}
-
-vi.mock('../../src/utils/segment-progress', () => ({
-  segmentProgress: () => {
-    if (segmentProgressQueue.length > 1) return segmentProgressQueue.shift();
-    return segmentProgressQueue[0] ?? buildProgress();
-  },
-}));
-
 import { TrainTooltip } from '../../src/overlays/TrainTooltip';
-// Pin server clock so useServerNow inside the tooltip returns a stable value.
 import { useSystemStore } from '../../src/store/systemStore';
+import type { NextStop, Vehicle } from '../../src/types';
+
+// Snapshot the initial store slice so each test starts from a clean base —
+// we mutate `predictions`/`serverOffsetMs` directly via setState and need to
+// roll them back after each case.
+const INITIAL_STORE = useSystemStore.getState();
 
 function mkVehicle(overrides: Partial<Vehicle> = {}): Vehicle {
   return {
@@ -53,6 +30,16 @@ function mkVehicle(overrides: Partial<Vehicle> = {}): Vehicle {
   };
 }
 
+function mkNextStop(overrides: Partial<NextStop> = {}): NextStop {
+  return {
+    stopId: 'place-dwnxg',
+    stopName: 'Downtown Crossing',
+    etaSec: 120,
+    status: null,
+    ...overrides,
+  };
+}
+
 // Instrument rAF so we can step frames deterministically.
 type FrameCb = (ts: number) => void;
 let nextHandle = 1;
@@ -63,9 +50,8 @@ beforeEach(() => {
   nextHandle = 1;
   pending.clear();
   cancelSpy.mockClear();
-  segmentProgressQueue.length = 0;
   // Seed server offset so useServerNow returns a non-null value.
-  useSystemStore.setState({ serverOffsetMs: 0 });
+  useSystemStore.setState({ serverOffsetMs: 0, predictions: {} });
   vi.stubGlobal('requestAnimationFrame', (cb: FrameCb) => {
     const id = nextHandle++;
     pending.set(id, cb);
@@ -79,7 +65,10 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-  useSystemStore.setState({ serverOffsetMs: null });
+  useSystemStore.setState({
+    serverOffsetMs: INITIAL_STORE.serverOffsetMs,
+    predictions: INITIAL_STORE.predictions,
+  });
 });
 
 function fireFrame(ts: number): void {
@@ -90,21 +79,31 @@ function fireFrame(ts: number): void {
   });
 }
 
+/** Vehicle primed with a `nextStops` that segmentProgress can interpolate
+ *  against. `updatedAt` is pinned so the `updatedAt + etaSec*1000` fallback
+ *  path lands at a predictable absolute arrival time. */
+function vehicleOnSegment(overrides: Partial<Vehicle> = {}): Vehicle {
+  return mkVehicle({
+    lastDepartedStopId: 'place-a',
+    lastDepartedAt: 1_000_000,
+    nextStops: [mkNextStop({ etaSec: 60 })],
+    updatedAt: new Date(1_000_000).toISOString(),
+    ...overrides,
+  });
+}
+
 describe('TrainTooltip', () => {
   it('renders line name and direction', () => {
-    segmentProgressQueue.push(buildProgress({ fraction: 0.5 }));
     render(<TrainTooltip x={100} y={100} vehicle={mkVehicle()} />);
     expect(screen.getByText('Red Line')).toBeDefined();
   });
 
   it('handles unknown route gracefully', () => {
-    segmentProgressQueue.push(buildProgress({ fraction: 0.5 }));
     render(<TrainTooltip x={100} y={100} vehicle={mkVehicle({ routeId: 'Unknown' })} />);
     expect(screen.getByText('Unknown')).toBeDefined();
   });
 
   it('renders the origin → destination journey row', () => {
-    segmentProgressQueue.push(buildProgress({ fraction: 0.3 }));
     render(
       <TrainTooltip x={100} y={100} vehicle={mkVehicle()} origin="Alewife" destination="Ashmont" />,
     );
@@ -115,48 +114,61 @@ describe('TrainTooltip', () => {
   });
 
   it('falls back to an em-dash when origin is unknown', () => {
-    segmentProgressQueue.push(buildProgress({ fraction: 0.3 }));
     render(<TrainTooltip x={100} y={100} vehicle={mkVehicle()} destination="Ashmont" />);
     expect(screen.getByText('—')).toBeDefined();
   });
 
   it('advances the progress-bar width across frames', () => {
-    // Initial mount uses .fraction = 0.2, then rAF ticks bump to .6, .9.
-    segmentProgressQueue.push(buildProgress({ fraction: 0.2 }));
-    render(<TrainTooltip x={0} y={0} vehicle={mkVehicle()} />);
+    // Drive the REAL segmentProgress through the tooltip's wiring: Vehicle
+    // with lastDepartedAt + nextStops, server offset 0, and a fake-timer
+    // "now" that we advance between frames. This proves the tooltip feeds
+    // frameTs/predictionLookup/vehicle through correctly — the math itself
+    // is covered by segment-progress.test.ts.
+    //
+    // Segment window: [1_000_000, 1_060_000] ms (60s, from updatedAt + etaSec).
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(1_012_000)); // 20% of the way
+      render(<TrainTooltip x={0} y={0} vehicle={vehicleOnSegment()} />);
 
-    // FloatingPortal renders into document.body, not the test container.
-    let bar = document.body.querySelector('.tooltip-progress-bar') as HTMLElement | null;
-    expect(bar).not.toBeNull();
-    expect(bar!.style.width).toBe('20%');
+      // FloatingPortal renders into document.body, not the test container.
+      let bar = document.body.querySelector('.tooltip-progress-bar') as HTMLElement | null;
+      expect(bar).not.toBeNull();
+      expect(bar!.style.width).toBe('20%');
 
-    // Tick a frame with a higher fraction — the next rAF callback runs
-    // our mock and React re-renders with the new width.
-    segmentProgressQueue.length = 0;
-    segmentProgressQueue.push(buildProgress({ fraction: 0.6 }));
-    fireFrame(16);
-    bar = document.body.querySelector('.tooltip-progress-bar') as HTMLElement | null;
-    expect(bar!.style.width).toBe('60%');
+      // Advance wall clock to 60% and fire a frame — the rAF callback bumps
+      // forceRender, the component re-renders, and segmentProgress re-reads
+      // Date.now() to produce the new fraction.
+      vi.setSystemTime(new Date(1_036_000));
+      fireFrame(16);
+      bar = document.body.querySelector('.tooltip-progress-bar') as HTMLElement | null;
+      expect(bar!.style.width).toBe('60%');
 
-    segmentProgressQueue.length = 0;
-    segmentProgressQueue.push(buildProgress({ fraction: 0.9 }));
-    fireFrame(32);
-    bar = document.body.querySelector('.tooltip-progress-bar') as HTMLElement | null;
-    expect(bar!.style.width).toBe('90%');
+      vi.setSystemTime(new Date(1_054_000));
+      fireFrame(32);
+      bar = document.body.querySelector('.tooltip-progress-bar') as HTMLElement | null;
+      expect(bar!.style.width).toBe('90%');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('cancels the animation frame on unmount', () => {
-    segmentProgressQueue.push(buildProgress({ fraction: 0.4 }));
     const { unmount } = render(<TrainTooltip x={0} y={0} vehicle={mkVehicle()} />);
     unmount();
     expect(cancelSpy).toHaveBeenCalled();
   });
 
   it('renders "Heading to" and NO progress bar when fraction is null', () => {
-    segmentProgressQueue.push(
-      buildProgress({ fraction: null, fromStopName: null, toStopName: 'Downtown Crossing' }),
-    );
-    render(<TrainTooltip x={0} y={0} vehicle={mkVehicle()} />);
+    // No lastDepartedAt → segmentProgress falls through to the
+    // `fraction: null, fromStopName: null, toStopName: nextStop.stopName`
+    // branch. The tooltip should hide the bar and show "Heading to …".
+    const vehicle = mkVehicle({
+      lastDepartedAt: null,
+      lastDepartedStopId: null,
+      nextStops: [mkNextStop({ stopName: 'Downtown Crossing' })],
+    });
+    render(<TrainTooltip x={0} y={0} vehicle={vehicle} />);
     expect(document.body.querySelector('.tooltip-progress-bar')).toBeNull();
     expect(screen.getByText(/Heading to/)).toBeDefined();
     expect(screen.getByText('Downtown Crossing')).toBeDefined();
@@ -165,7 +177,6 @@ describe('TrainTooltip', () => {
   it('renders each next-stop row with a clock time in parentheses', () => {
     // Freeze "now" so formatStatusParts inside the tooltip sees a stable
     // 3-minute gap and produces "3 min (7:03)".
-    segmentProgressQueue.push(buildProgress({ fraction: 0.5 }));
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-06T11:00:00Z')); // 7:00 Boston
     try {
