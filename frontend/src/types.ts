@@ -16,6 +16,14 @@ export interface Vehicle {
   destination?: string | null;
   delayed?: boolean;
   nextStops?: NextStop[];
+  /**
+   * Server-recorded "just departed" hint — the stop the train was last
+   * STOPPED_AT, plus the server-clock timestamp of that departure. Used by
+   * the tooltip's station-to-station progress bar. Null when the server
+   * hasn't observed a full STOP→TRANSIT cycle for this vehicle yet.
+   */
+  lastDepartedStopId?: string | null;
+  lastDepartedAt?: number | null; // epoch ms, server-origin
 }
 
 export interface NextStop {

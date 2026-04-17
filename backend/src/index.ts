@@ -14,6 +14,7 @@ import { buildNextStopsForTrip } from './next-stops.js';
 import { ReferenceData } from './reference-data.js';
 import { StateManager } from './state-manager.js';
 import type { Alert, MbtaResource, Prediction, ScheduledDeparture, Vehicle } from './types.js';
+import { VehicleDepartureCache } from './vehicle-departure-cache.js';
 import { WsBroadcaster } from './ws-server.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -40,6 +41,11 @@ const stateManager = new StateManager();
 const wsBroadcaster = new WsBroadcaster(server, stateManager);
 const coalescer = new Coalescer(stateManager, wsBroadcaster);
 const referenceData = new ReferenceData({ apiKey: MBTA_API_KEY });
+// Tracks per-vehicle "last STOPPED_AT → IN_TRANSIT_TO" transitions so we can
+// enrich every outgoing Vehicle with `lastDepartedStopId` / `lastDepartedAt`
+// for the station-to-station tooltip progress bar. Pure in-memory; periodic
+// sweep() GCs vehicles that haven't reported in 30 min.
+const departureCache = new VehicleDepartureCache();
 
 const startTime = Date.now();
 let lastSseEventTime = 0;
@@ -235,12 +241,24 @@ const mbtaStream = new MbtaStream({
       case 'reset':
         coalescer.resetVehicles(
           (event.data as Vehicle[]).map((v) => {
+            // Seed departure cache prev-state for every vehicle in the reset
+            // snapshot. No recorded departures are expected on a reset — we
+            // just need the initial status/stopId as baseline so the *next*
+            // STOPPED_AT → IN_TRANSIT_TO transition captures properly.
+            const now = Date.now();
+            departureCache.onEvent(v.id, v, now);
+            const entry = departureCache.get(v.id);
             const snap = referenceData.getSnapshot();
-            if (!snap) return v;
+            const base = {
+              ...v,
+              lastDepartedStopId: entry?.stopId ?? null,
+              lastDepartedAt: entry?.at ?? null,
+            };
+            if (!snap) return base;
             const stopName = snap.stops.get(v.stopId)?.name ?? null;
             const routeColor = snap.routes.get(v.routeId)?.color ?? null;
             const destination = snap.trips.get(v.tripId)?.headsign ?? null;
-            return { ...v, currentStopName: stopName, routeColor, destination };
+            return { ...base, currentStopName: stopName, routeColor, destination };
           }),
         );
         break;
@@ -248,18 +266,32 @@ const mbtaStream = new MbtaStream({
       case 'update':
         (() => {
           const v = event.data as Vehicle;
+          const now = Date.now();
+          departureCache.onEvent(v.id, v, now);
+          const entry = departureCache.get(v.id);
+          const withDeparture: Vehicle = {
+            ...v,
+            lastDepartedStopId: entry?.stopId ?? null,
+            lastDepartedAt: entry?.at ?? null,
+          };
           const snap = referenceData.getSnapshot();
           if (!snap) {
-            coalescer.upsertVehicle(v);
+            coalescer.upsertVehicle(withDeparture);
             return;
           }
           const stopName = snap.stops.get(v.stopId)?.name ?? null;
           const routeColor = snap.routes.get(v.routeId)?.color ?? null;
           const destination = snap.trips.get(v.tripId)?.headsign ?? null;
-          coalescer.upsertVehicle({ ...v, currentStopName: stopName, routeColor, destination });
+          coalescer.upsertVehicle({
+            ...withDeparture,
+            currentStopName: stopName,
+            routeColor,
+            destination,
+          });
         })();
         break;
       case 'remove':
+        departureCache.remove(event.id);
         coalescer.removeVehicle(event.id);
         break;
     }
@@ -374,6 +406,15 @@ async function start() {
   mbtaStream.start();
   console.log('MBTA SSE streams connected');
 
+  // Sweep stale departure-cache entries every 5 min. 30 min TTL means a
+  // vehicle that drops off the feed (end of service, trip completion, SSE
+  // gap > 30m) stops occupying memory; active trains refresh `lastSeen` on
+  // every event so they never get reaped.
+  const sweepIntervalId = setInterval(
+    () => departureCache.sweep(Date.now(), 30 * 60 * 1000),
+    5 * 60 * 1000,
+  );
+
   server.listen(PORT, () => {
     console.log(`Backend running on http://localhost:${PORT}`);
     console.log(`WebSocket available at ws://localhost:${PORT}/ws`);
@@ -381,6 +422,7 @@ async function start() {
 
   const shutdown = () => {
     console.log('Shutting down gracefully...');
+    clearInterval(sweepIntervalId);
     mbtaStream.stop();
     referenceData.close();
     coalescer.close();

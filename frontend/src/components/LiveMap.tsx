@@ -57,7 +57,6 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
   const [pinnedTrainId, setPinnedTrainId] = useState<string | null>(null);
   const [pinnedTrainXY, setPinnedTrainXY] = useState<{ x: number; y: number } | null>(null);
   const [hoveredStation, setHoveredStation] = useState<StationHoverInfo | null>(null);
-  const [hoverClockSec, setHoverClockSec] = useState(() => performance.now() / 1000);
   const [bearing, setBearing] = useState(-17.7);
   const [zoom, setZoom] = useState(12.4);
 
@@ -349,17 +348,6 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
     };
   }, [handleMapBlankClick]);
 
-  useEffect(() => {
-    if (!hoveredTrain && !pinnedTrainId) return;
-    let timer = 0;
-    const tick = () => {
-      setHoverClockSec(performance.now() / 1000);
-      timer = window.setTimeout(tick, 100);
-    };
-    tick();
-    return () => window.clearTimeout(timer);
-  }, [hoveredTrain, pinnedTrainId]);
-
   // Pinned wins over hover so a tapped tooltip stays parked while the user
   // moves the cursor to read it. Re-resolve against the live trips list so
   // the pin follows updated positions as GPS fixes come in.
@@ -381,16 +369,13 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
 
   const isPinned = pinnedTrainId != null && activeTrip?.id === pinnedTrainId;
 
-  const activeStopPredictions: Prediction[] = activeTrip
-    ? (predictions[activeTrip.stopId] ?? [])
-    : [];
-
-  const activeProgress = useMemo(() => {
-    if (!activeTrip) return 0;
-    const elapsedSec = Math.max(0, hoverClockSec - anchorTimeSec);
-    const raw = (activeTrip.progress + activeTrip.progressVelocity * elapsedSec) * 100;
-    return Math.max(0, Math.min(100, raw));
-  }, [activeTrip, hoverClockSec, anchorTimeSec]);
+  // TrainTooltip now owns its own animation (useAnimationFrame + server clock)
+  // and pulls predictions from the store, so LiveMap only needs to hand it the
+  // current Vehicle. Look up by id so the tooltip follows live WS updates.
+  const activeVehicle: Vehicle | null = useMemo(() => {
+    if (!activeTrip) return null;
+    return vehicles.find((v) => v.id === activeTrip.id) ?? null;
+  }, [activeTrip, vehicles]);
 
   const handleZoomIn = useCallback(() => {
     mapRef.current?.zoomIn({ duration: 200 });
@@ -456,18 +441,11 @@ export function LiveMap({ vehicles, predictions, alerts }: LiveMapProps) {
           </span>
         </button>
       </div>
-      {activeTrip && activeAnchor && (
+      {activeTrip && activeAnchor && activeVehicle && (
         <TrainTooltip
           x={activeAnchor.x}
           y={activeAnchor.y}
-          routeId={activeTrip.routeId}
-          directionId={activeTrip.directionId}
-          stopId={activeTrip.stopId}
-          label={activeTrip.label}
-          currentStatus={activeTrip.currentStatus}
-          delayed={activeTrip.delayed}
-          predictions={activeStopPredictions}
-          progress={activeProgress}
+          vehicle={activeVehicle}
           origin={activeTrip.origin}
           destination={activeTrip.destination}
           futureStops={activeTrip.futureStops}

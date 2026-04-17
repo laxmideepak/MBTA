@@ -27,6 +27,15 @@ export interface Vehicle {
    * Optional so older clients can ignore it.
    */
   nextStops?: NextStop[];
+  /**
+   * Station-to-station tooltip needs to know where a train *came from*, not
+   * just where it's going. The server records the stop a vehicle was last
+   * STOPPED_AT before transitioning to IN_TRANSIT_TO / INCOMING_AT, plus the
+   * server-clock timestamp of that departure. Null while we haven't observed
+   * a full STOP→TRANSIT cycle for this vehicle yet.
+   */
+  lastDepartedStopId?: string | null;
+  lastDepartedAt?: number | null; // epoch ms, server-origin
 }
 
 export interface NextStop {

@@ -1,8 +1,11 @@
 import { FloatingPortal, flip, offset, shift, useFloating } from '@floating-ui/react';
-import { type FC, useLayoutEffect, useMemo } from 'react';
-import type { Prediction } from '../types';
+import { type FC, useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { useAnimationFrame } from '../hooks/useAnimationFrame';
+import { useSystemStore } from '../store/systemStore';
+import type { Prediction, Vehicle } from '../types';
 import { getRouteColorHex, getRouteDisplayName } from '../utils/mbta-colors';
 import { DIRECTION_NAMES } from '../utils/mbta-routes';
+import { segmentProgress } from '../utils/segment-progress';
 import { getStopName } from '../utils/stop-names';
 import { formatStatusParts } from '../utils/time-format';
 import '../styles/tooltip.css';
@@ -10,15 +13,12 @@ import '../styles/tooltip.css';
 interface TrainTooltipProps {
   x: number;
   y: number;
-  routeId: string;
-  directionId: number;
-  stopId: string;
-  label?: string;
-  currentStatus?: string;
-  delayed?: boolean;
-  /** Trip-scoped predictions (already filtered to this train's trip). */
-  predictions: Prediction[];
-  progress: number;
+  /**
+   * The live Vehicle this tooltip is attached to. Holds every field the
+   * station-to-station progress computation needs (`lastDepartedStopId`,
+   * `lastDepartedAt`, `nextStops`, `currentStatus`, etc).
+   */
+  vehicle: Vehicle;
   origin?: string;
   destination?: string;
   futureStops?: { stopId: string; name: string; time: string | null; status: string | null }[];
@@ -28,33 +28,10 @@ interface TrainTooltipProps {
   onClose?: () => void;
 }
 
-// Human phrasing for the tiny "what is it doing right now" banner. We used
-// to say just "→ Alewife" which made every hover look identical regardless
-// of whether the train was idling at a platform, rolling in, or en-route.
-function statusPhrase(status: string | undefined, nextStop: string): string {
-  switch (status) {
-    case 'STOPPED_AT':
-      return `Stopped at ${nextStop}`;
-    case 'INCOMING_AT':
-      return `Arriving at ${nextStop}`;
-    case 'IN_TRANSIT_TO':
-      return `Heading to ${nextStop}`;
-    default:
-      return nextStop ? `Next · ${nextStop}` : '';
-  }
-}
-
 export const TrainTooltip: FC<TrainTooltipProps> = ({
   x,
   y,
-  routeId,
-  directionId,
-  stopId,
-  label,
-  currentStatus,
-  delayed,
-  predictions,
-  progress,
+  vehicle,
   origin,
   destination,
   futureStops = [],
@@ -85,6 +62,8 @@ export const TrainTooltip: FC<TrainTooltipProps> = ({
     update();
   }, [virtualReference, refs, update]);
 
+  const { routeId, directionId, label, currentStatus, delayed, tripId } = vehicle;
+
   const color = getRouteColorHex(routeId);
   const lineName = getRouteDisplayName(routeId);
   const headsign =
@@ -92,18 +71,56 @@ export const TrainTooltip: FC<TrainTooltipProps> = ({
       ? destination
       : (DIRECTION_NAMES[routeId]?.[directionId] ?? `Direction ${directionId}`);
   const originName = origin && origin.length > 0 ? origin : null;
-  const nextStopName = getStopName(stopId);
-  const clampedProgress = Math.max(0, Math.min(100, progress));
-  const progressLabel = Number(clampedProgress.toFixed(0)).toString();
 
-  // Trip-scoped predictions already flow in from useTrainTrips, but callers
-  // may still hand us the old stopId-indexed list. Prefer the explicit
-  // `futureStops` prop, fall back to filtering predictions by direction.
+  // Read the predictions map straight from the store. `predictionLookup` is
+  // a stable closure over the `(stopId, tripId) -> Prediction` index, rebuilt
+  // only when `predictions` identity changes (i.e. real WS updates).
+  const predictions = useSystemStore((s) => s.predictions);
+  const predictionLookup = useCallback(
+    (tid: string, sid: string): Prediction | null => {
+      const bucket = predictions[sid];
+      if (!bucket) return null;
+      return bucket.find((p) => p.tripId === tid) ?? null;
+    },
+    [predictions],
+  );
+
+  // Subscribe to just the offset (a primitive), so the tooltip re-renders
+  // when the server clock rebaselines but not on every other store churn.
+  const serverOffsetMs = useSystemStore((s) => s.serverOffsetMs);
+
+  // Animation state. Every rAF tick bumps a counter so segmentProgress
+  // re-runs with a fresh `Date.now()` reading. A counter instead of the raw
+  // timestamp guarantees a rerender each frame even if Date.now() hasn't
+  // advanced a full ms (happens in fast test loops / fake-timer contexts).
+  const [frameTick, setFrameTick] = useState(0);
+  useAnimationFrame(() => {
+    setFrameTick((n) => n + 1);
+  });
+  // frameTick is the deliberate rerender trigger. Reading Date.now() outside
+  // a memo means segmentProgress runs on every render while this component
+  // is mounted — that's exactly what we want for smooth animation.
+  void frameTick;
+  const frameTs = serverOffsetMs == null ? null : Date.now() + serverOffsetMs;
+
+  const progress = segmentProgress({
+    vehicle,
+    now: frameTs,
+    stopName: (id) => (id ? getStopName(id) : null),
+    prediction: predictionLookup,
+  });
+
+  // Trip-scoped future stops: prefer the explicit prop; otherwise fall back
+  // to filtering the current stop's predictions by direction (legacy path).
   const resolvedFutureStops = useMemo(() => {
     if (futureStops.length > 0) return futureStops;
-    return predictions
-      .filter((p) => p.directionId === directionId && p.arrivalTime)
-      .sort((a, b) => new Date(a.arrivalTime!).getTime() - new Date(b.arrivalTime!).getTime())
+    const bucket = predictions[vehicle.stopId] ?? [];
+    return bucket
+      .filter((p) => p.tripId === tripId && p.arrivalTime)
+      .sort(
+        (a, b) =>
+          new Date(a.arrivalTime as string).getTime() - new Date(b.arrivalTime as string).getTime(),
+      )
       .slice(0, 5)
       .map((pred) => ({
         stopId: pred.stopId,
@@ -111,7 +128,17 @@ export const TrainTooltip: FC<TrainTooltipProps> = ({
         time: pred.arrivalTime,
         status: pred.status,
       }));
-  }, [futureStops, predictions, directionId]);
+  }, [futureStops, predictions, vehicle.stopId, tripId]);
+
+  // Percent label for the bar. Kept as string to avoid rendering `NaN%`
+  // when fraction is null (we guard above the render anyway).
+  const fractionPct = progress.fraction != null ? Math.round(progress.fraction * 1000) / 10 : null;
+  const fractionWidth =
+    progress.fraction != null ? `${Math.min(100, Math.max(0, progress.fraction * 100))}%` : '0%';
+
+  const showBar =
+    progress.fraction != null && progress.fromStopName != null && progress.toStopName != null;
+  const showHeadingTo = !showBar && progress.toStopName != null;
 
   return (
     <FloatingPortal>
@@ -162,24 +189,37 @@ export const TrainTooltip: FC<TrainTooltipProps> = ({
           </span>
         </div>
 
-        <div className="tooltip-status-line">
-          <span
-            className={`tooltip-status-pulse tooltip-status-pulse--${currentStatus?.toLowerCase() ?? 'unknown'}`}
-            style={{ background: color }}
-            aria-hidden="true"
-          />
-          {statusPhrase(currentStatus, nextStopName)}
-        </div>
-
-        <div className="tooltip-progress-wrap">
-          <div className="tooltip-progress">
-            <div
-              className="tooltip-progress-bar"
-              style={{ width: `${clampedProgress}%`, background: color }}
+        {showBar ? (
+          <>
+            <div className="tooltip-segment">
+              <strong>{progress.fromStopName}</strong>
+              <span className="tooltip-segment-arrow" aria-hidden="true">
+                {' → '}
+              </span>
+              <strong>{progress.toStopName}</strong>
+            </div>
+            <div className="tooltip-progress-wrap">
+              <div className="tooltip-progress">
+                <div
+                  className="tooltip-progress-bar"
+                  style={{ width: fractionWidth, background: color }}
+                />
+              </div>
+              <span className="tooltip-progress-text">
+                {fractionPct != null ? fractionPct.toFixed(1) : '0.0'}%
+              </span>
+            </div>
+          </>
+        ) : showHeadingTo ? (
+          <div className="tooltip-status-line">
+            <span
+              className={`tooltip-status-pulse tooltip-status-pulse--${currentStatus?.toLowerCase() ?? 'unknown'}`}
+              style={{ background: color }}
+              aria-hidden="true"
             />
+            Heading to <strong>{progress.toStopName}</strong>
           </div>
-          <span className="tooltip-progress-text">{progressLabel}%</span>
-        </div>
+        ) : null}
 
         {resolvedFutureStops.length > 0 && (
           <div className="tooltip-stops">

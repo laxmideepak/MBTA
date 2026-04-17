@@ -186,6 +186,23 @@
   opacity: 0.7;
 }
 
+/* Station-to-station caption above the progress bar, e.g.
+   "Park St → Downtown Crossing". `<strong>` spans render bright; the
+   arrow glyph stays muted. */
+.tooltip-segment {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+  line-height: 1.35;
+}
+.tooltip-segment strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.tooltip-segment-arrow {
+  color: var(--text-muted);
+}
+
 .tooltip-progress-wrap {
   display: flex;
   align-items: center;

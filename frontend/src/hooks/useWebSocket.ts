@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { resetServerOffset } from '../store/systemStore';
 import type { WsMessage } from '../types';
 
 interface UseWebSocketOptions {
@@ -30,6 +31,10 @@ export function useWebSocket({ url, onMessage }: UseWebSocketOptions) {
     };
     ws.onclose = () => {
       setConnected(false);
+      // Drop server offset on disconnect — server-origin stamps are only
+      // meaningful against a recent baseline. `useServerNow()` consumers
+      // should render as "no clock yet" until a fresh full-state arrives.
+      resetServerOffset();
       if (connectTokenRef.current !== token) return;
       const backoff = Math.min(1000 * 2 ** attemptRef.current, 30000);
       attemptRef.current++;
@@ -41,6 +46,7 @@ export function useWebSocket({ url, onMessage }: UseWebSocketOptions) {
     };
     ws.onerror = () => {
       /* swallow — onclose will retry */
+      resetServerOffset();
     };
     wsRef.current = ws;
   }, [url]);
