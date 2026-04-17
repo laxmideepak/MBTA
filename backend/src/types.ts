@@ -21,6 +21,7 @@ export interface Vehicle {
   routeColor?: string | null;
   currentStopName?: string | null;
   destination?: string | null;
+  delayed?: boolean;
   /**
    * Server-side derived slice: next predicted stops for this vehicle's trip.
    * Optional so older clients can ignore it.

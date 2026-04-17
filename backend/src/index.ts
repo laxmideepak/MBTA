@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import express from 'express';
 import { Coalescer } from './coalescer.js';
+import { delayedRouteIds } from './delays.js';
 import { loadShapes } from './gtfs-loader.js';
 import { withMbtaKey } from './mbta-api-url.js';
 import { parseSchedule } from './mbta-parser.js';
@@ -281,13 +282,43 @@ const mbtaStream = new MbtaStream({
     switch (event.type) {
       case 'reset':
         coalescer.resetAlerts(event.data as Alert[]);
+        (() => {
+          const now = Date.now();
+          const snapshot = stateManager.getSnapshot();
+          const delayedRoutes = delayedRouteIds(snapshot.alerts, now);
+          const enriched = snapshot.vehicles.map((v) => ({
+            ...v,
+            delayed: delayedRoutes.has(v.routeId),
+          }));
+          coalescer.resetVehicles(enriched);
+        })();
         break;
       case 'add':
       case 'update':
         coalescer.upsertAlert(event.data as Alert);
+        (() => {
+          const now = Date.now();
+          const snapshot = stateManager.getSnapshot();
+          const delayedRoutes = delayedRouteIds(snapshot.alerts, now);
+          for (const v of snapshot.vehicles) {
+            const delayed = delayedRoutes.has(v.routeId);
+            if (v.delayed === delayed) continue;
+            coalescer.upsertVehicle({ ...v, delayed });
+          }
+        })();
         break;
       case 'remove':
         coalescer.removeAlert(event.id);
+        (() => {
+          const now = Date.now();
+          const snapshot = stateManager.getSnapshot();
+          const delayedRoutes = delayedRouteIds(snapshot.alerts, now);
+          for (const v of snapshot.vehicles) {
+            const delayed = delayedRoutes.has(v.routeId);
+            if (v.delayed === delayed) continue;
+            coalescer.upsertVehicle({ ...v, delayed });
+          }
+        })();
         break;
     }
   },

@@ -244,7 +244,7 @@ export function useTrainTrips(
         label: v.label,
         currentStatus: v.currentStatus,
         stopId: v.stopId,
-        delayed: delayedRoutes.has(v.routeId),
+        delayed: v.delayed ?? delayedRoutes.has(v.routeId),
         origin: originName,
         destination: destinationName,
         progress: targetIdx / Math.max(1, coords.length - 1),

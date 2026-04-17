@@ -14,6 +14,7 @@ export interface Vehicle {
   routeColor?: string | null;
   currentStopName?: string | null;
   destination?: string | null;
+  delayed?: boolean;
   nextStops?: NextStop[];
 }
 
